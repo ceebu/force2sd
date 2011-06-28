@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="app_name">Force2SD</string>
+	<string name="incomp_device_title">Incompatible device</string>
+	<string name="move_query_title">Moving application</string>
+	<string name="move_query1">Are you sure you want to move </string>
+	<string name="move_query2"> to internal storage or SD card?</string>
+	<string name="incomp_device">Your device is not compatible with this application.</string>
+    <string name="need_root_title">Need root privileges</string>
+    <string name="need_root">You need root privileges on your device for SuperDim
+    to work.  
+    You may want to search the web for "root" and the name of your device on how 
+    to achieve this and consult local laws.</string>
+    <string name="ok">OK</string>
+	<string name="yes">Yes</string>
+	<string name="no">No</string>
+</resources>
