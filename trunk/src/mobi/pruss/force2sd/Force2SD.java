@@ -1,6 +1,5 @@
 package mobi.pruss.force2sd;
 
-import java.util.Comparator;
 import java.util.List;
 import mobi.pruss.force2sd.R;
 import android.app.Activity;
