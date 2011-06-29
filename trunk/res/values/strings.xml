@@ -17,7 +17,7 @@
 	<string name="no">No</string>
     <string name="planet_prompt">Choose a planet</string>
     <string-array name="fromto_options">
-        <item>to SD</item>
-        <item>from SD</item>
+        <item>Move to SD</item>
+        <item>Move from SD</item>
     </string-array>
 </resources>

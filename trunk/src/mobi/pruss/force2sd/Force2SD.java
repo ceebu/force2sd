@@ -2,6 +2,7 @@ package mobi.pruss.force2sd;
 
 import java.io.File;
 import java.text.DecimalFormat;
+import java.util.ArrayList;
 import java.util.List;
 import mobi.pruss.force2sd.R;
 import android.app.Activity;
@@ -9,6 +10,7 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.SharedPreferences;
+import android.content.SharedPreferences.Editor;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
@@ -70,23 +72,28 @@ public class Force2SD extends Activity {
 		ed.commit();
 	}
 
-	private void populateList(ListView listView, String... rootCmds) {
-        new PopulateListTask(this, pm, listView, fromSD() ).execute(rootCmds);
-	}
-	private void doMove(ApplicationInfo appInfo) {
-		String mode = fromSD() ? "f" : "s";
-		populateList(listView, "pm install -r -" + mode + " \""+appInfo.publicSourceDir+"\"");
+	private void populateList(ListView listView) {
+        new PopulateListTask(this, pm, listView, fromSD() ).execute();
 	}
 	
-	private void move(final ApplicationInfo appInfo) {
+	private void doMove(int pos) {
+		String mode = fromSD() ? "f" : "s";
+        MyApplicationInfo appInfo = (MyApplicationInfo) listView.getAdapter().getItem(pos);
+        String fname = appInfo.publicSourceDir;      
+		
+		new MoveTask(this, listView, mode, fname, pos).execute();
+	}
+	
+	private void move(final int pos) {
         AlertDialog alertDialog = new AlertDialog.Builder(this).create();
+        MyApplicationInfo appInfo = (MyApplicationInfo) listView.getAdapter().getItem(pos);
         
         alertDialog.setTitle(R.string.move_query_title);
         
         String message = 
         	(String)res.getText(R.string.move_query1) +
         	" " +
-        	appInfo.loadLabel(getPackageManager()) +
+        	appInfo.getLabel() +
         	" " +
         	res.getText(fromSD()? R.string.move_query2_fromsd : R.string.move_query2_tosd);
 
@@ -94,7 +101,7 @@ public class Force2SD extends Activity {
         alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, 
         		res.getText(R.string.yes), 
         	new DialogInterface.OnClickListener() {
-            public void onClick(DialogInterface dialog, int which) {doMove(appInfo);} });
+            public void onClick(DialogInterface dialog, int which) {doMove(pos);} });
         alertDialog.setButton(DialogInterface.BUTTON_NEGATIVE, 
         		res.getText(R.string.no), 
         	new DialogInterface.OnClickListener() {
@@ -123,7 +130,7 @@ public class Force2SD extends Activity {
 			@Override
 			public void onItemClick(AdapterView<?> parent, View v, int position,
 					long id) {
-				move((ApplicationInfo) parent.getAdapter().getItem(position));				
+				move(position);				
 			}        	
         });
         
@@ -166,7 +173,35 @@ public class Force2SD extends Activity {
     }
 }
 
-class PopulateListTask extends AsyncTask<String, Void, List<ApplicationInfo>> {
+class MyApplicationInfo extends ApplicationInfo {
+	private long size;
+	private String label;
+	
+	public MyApplicationInfo(PackageManager pm, ApplicationInfo a) {
+		super(a);
+		
+		File f = new File(publicSourceDir);
+		size = f.length();
+		
+		CharSequence l = loadLabel(pm);
+		if (l == null) {
+			label = packageName;
+		}
+		else {
+			label = (String)l;
+		}
+	}
+	
+	public long getSize() {
+		return size;
+	}
+
+	public String getLabel() {
+		return label;
+	}
+}
+
+class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 	final PackageManager pm;
 	final Context	 context;
 	final ListView listView;
@@ -182,9 +217,7 @@ class PopulateListTask extends AsyncTask<String, Void, List<ApplicationInfo>> {
 		progress = (ProgressBar)((Activity)c).findViewById(R.id.progress);
 	}
 	
-	private String getSizeText(String fname) {
-		File f = new File(fname);
-		long size = f.length();
+	private String sizeText(long size) {
 		DecimalFormat df0 = new DecimalFormat("#"); 
 		DecimalFormat df = new DecimalFormat("#.#"); 
 		
@@ -207,34 +240,31 @@ class PopulateListTask extends AsyncTask<String, Void, List<ApplicationInfo>> {
 	
 	private boolean movable(ApplicationInfo a, boolean fromSD) {
 		if (a.publicSourceDir == null ||
-				0 != (a.flags & ApplicationInfo.FLAG_SYSTEM))
+				0 != (a.flags & MyApplicationInfo.FLAG_SYSTEM))
 			return false;
 		
 		if (fromSD) 
-			return 0 != (a.flags & ApplicationInfo.FLAG_EXTERNAL_STORAGE);
+			return 0 != (a.flags & MyApplicationInfo.FLAG_EXTERNAL_STORAGE);
 		else
-			return 0 == (a.flags & ApplicationInfo.FLAG_EXTERNAL_STORAGE);
+			return 0 == (a.flags & MyApplicationInfo.FLAG_EXTERNAL_STORAGE);
 	}
 
 	@Override
-	protected List<ApplicationInfo> doInBackground(String... c) {
-		if (c.length > 0) {
-			Log.v("root shell",c[0]);
-			Root root = new Root();
-			root.exec(c[0]);
-			root.close(true);
-		}
-		
+	protected List<MyApplicationInfo> doInBackground(Void... c) {
 		List<ApplicationInfo> list = 
 			pm.getInstalledApplications(0);
 		
-		for (int i = list.size()-1; i >= 0; i--) {
-			if (!movable(list.get(i), fromSD)) {
-				list.remove(i);
+		List<MyApplicationInfo> myList = new ArrayList<MyApplicationInfo>();
+		
+		for (int i = 0 ; i < list.size() ; i++) {
+			if (movable(list.get(i), fromSD)) {
+				MyApplicationInfo myAppInfo;
+				myAppInfo = new MyApplicationInfo(pm, list.get(i));
+				myList.add(myAppInfo);
 			}
 		}
 		
-		return list;
+		return myList;
 	}
 	
 	@Override
@@ -244,10 +274,10 @@ class PopulateListTask extends AsyncTask<String, Void, List<ApplicationInfo>> {
 	}
 	
 	@Override
-	protected void onPostExecute(final List<ApplicationInfo> appInfo) {
+	protected void onPostExecute(final List<MyApplicationInfo> appInfo) {
 		
-		ArrayAdapter<ApplicationInfo> appInfoAdapter = 
-			new ArrayAdapter<ApplicationInfo>(context, 
+		ArrayAdapter<MyApplicationInfo> appInfoAdapter = 
+			new ArrayAdapter<MyApplicationInfo>(context, 
 					R.layout.twoline, 
 					appInfo) {
 
@@ -262,18 +292,65 @@ class PopulateListTask extends AsyncTask<String, Void, List<ApplicationInfo>> {
 				}
 
 				((TextView)v.findViewById(R.id.text1))
-					.setText(appInfo.get(position).loadLabel(pm));
+					.setText(appInfo.get(position).getLabel());
 				((TextView)v.findViewById(R.id.text2))
-					.setText(getSizeText(appInfo.get(position).publicSourceDir));
+					.setText(sizeText(appInfo.get(position).getSize()));
 				((TextView)v.findViewById(R.id.text2)).setGravity(Gravity.RIGHT);
 				return v;
 			}				
 		};
 		
 		appInfoAdapter.sort(new
-				 ApplicationInfo.DisplayNameComparator(pm));
+				 MyApplicationInfo.DisplayNameComparator(pm));
 		
 		listView.setAdapter(appInfoAdapter);
+		progress.setVisibility(View.GONE);
+		listView.setVisibility(View.VISIBLE);
+	}
+}
+
+
+class MoveTask extends AsyncTask<Void, Void, Boolean> {
+	final Context	 context;
+	final ProgressBar progress;
+	final String mode;
+	final String fname;
+	final int	  pos;
+	final ListView listView;
+	
+	MoveTask(Context c, ListView l, String m, String f, int p) {
+		context = c;
+		mode	= m;
+		fname	= f;
+		pos		= p;
+		listView = l;
+		progress = (ProgressBar)((Activity)c).findViewById(R.id.progress);
+	}
+	
+	@Override
+	protected Boolean doInBackground(Void... c) {
+		Root root = new Root();
+		root.exec("pm install -r -"+mode+" \""+fname+"\"");
+		root.close(true);
+		return true;
+	}
+	
+	@Override
+	protected void onPreExecute() {
+		progress.setVisibility(View.VISIBLE);
+		listView.setVisibility(View.GONE);
+	}
+	
+	@Override
+	protected void onPostExecute(Boolean b) {
+		File f = new File(fname);
+		
+		if (!f.exists()) {
+			@SuppressWarnings("unchecked")
+			ArrayAdapter<MyApplicationInfo> a = (ArrayAdapter<MyApplicationInfo>) listView.getAdapter();
+			a.remove(a.getItem(pos));
+		}
+		
 		progress.setVisibility(View.GONE);
 		listView.setVisibility(View.VISIBLE);
 	}
