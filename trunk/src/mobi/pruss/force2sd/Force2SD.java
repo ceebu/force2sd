@@ -13,6 +13,7 @@ import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.os.AsyncTask;
 import android.os.Bundle;
@@ -34,14 +35,26 @@ import android.widget.TwoLineListItem;
 
 public class Force2SD extends Activity {
 	private Resources res;
-    ListView listView; 
+    ListView[] listView = {null, null}; 
     PackageManager pm;
     Spinner spinner;
+    int		mode;
     
-    private boolean fromSD() {
-    	return spinner.getSelectedItemPosition() == 1;
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
     }
-
+    
+    private void viewListView() {
+    	if (listView[0].getVisibility() == View.GONE &&
+    			listView[1].getVisibility() == View.GONE)
+    		return;
+    	if (listView[mode].getVisibility() != View.GONE)
+    		return;
+    	listView[1-mode].setVisibility(View.GONE);
+    	listView[mode].setVisibility(View.VISIBLE);
+    }
+    
 	private void fatalError(int title, int msg) {
         AlertDialog alertDialog = new AlertDialog.Builder(this).create();
         
@@ -61,24 +74,26 @@ public class Force2SD extends Activity {
 	private void loadPrefs() {
 		SharedPreferences pref = getPreferences(MODE_PRIVATE);
 		
-		spinner.setSelection(pref.getBoolean("fromSD", false) ? 1 : 0 );
+		mode = pref.getInt("mode", 0);
+		spinner.setSelection(mode);
+		viewListView();
 	}
 	
 	private void savePrefs() {
 		SharedPreferences pref = getPreferences(MODE_PRIVATE);
 		SharedPreferences.Editor ed = pref.edit();		
 		
-		ed.putBoolean("fromSD", fromSD());
+		ed.putInt("mode", mode);
 		ed.commit();
 	}
 
-	private void populateList(ListView listView) {
-        new PopulateListTask(this, pm, listView, fromSD() ).execute();
+	private void populateList() {
+		if (listView[mode].getAdapter() == null) 
+			new PopulateListTask(this, pm, listView[mode], mode ).execute();
 	}
 	
 	private void doMove(int pos) {
-		String mode = fromSD() ? "f" : "s";
-        MyApplicationInfo appInfo = (MyApplicationInfo) listView.getAdapter().getItem(pos);
+        MyApplicationInfo appInfo = (MyApplicationInfo) listView[mode].getAdapter().getItem(pos);
         String fname = appInfo.publicSourceDir;      
 		
 		new MoveTask(this, listView, mode, fname, pos).execute();
@@ -86,7 +101,8 @@ public class Force2SD extends Activity {
 	
 	private void move(final int pos) {
         AlertDialog alertDialog = new AlertDialog.Builder(this).create();
-        MyApplicationInfo appInfo = (MyApplicationInfo) listView.getAdapter().getItem(pos);
+        MyApplicationInfo appInfo = 
+        	(MyApplicationInfo) listView[mode].getAdapter().getItem(pos);
         
         alertDialog.setTitle(R.string.move_query_title);
         
@@ -95,7 +111,7 @@ public class Force2SD extends Activity {
         	" " +
         	appInfo.getLabel() +
         	" " +
-        	res.getText(fromSD()? R.string.move_query2_fromsd : R.string.move_query2_tosd);
+        	res.getText(mode==1? R.string.move_query2_fromsd : R.string.move_query2_tosd);
 
         alertDialog.setMessage(message);
         alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, 
@@ -123,9 +139,20 @@ public class Force2SD extends Activity {
         	return;
         }
         
-        listView = (ListView) findViewById(R.id.movableApps);
+        listView[0] = (ListView) findViewById(R.id.movableApps0);
         
-        listView.setOnItemClickListener(new OnItemClickListener() {
+        listView[0].setOnItemClickListener(new OnItemClickListener() {
+
+			@Override
+			public void onItemClick(AdapterView<?> parent, View v, int position,
+					long id) {
+				move(position);				
+			}        	
+        });
+        
+        listView[1] = (ListView) findViewById(R.id.movableApps1);
+        
+        listView[1].setOnItemClickListener(new OnItemClickListener() {
 
 			@Override
 			public void onItemClick(AdapterView<?> parent, View v, int position,
@@ -140,14 +167,16 @@ public class Force2SD extends Activity {
         		this, R.array.fromto_options, android.R.layout.simple_spinner_item);        
         spinAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
         spinner.setAdapter(spinAdapter);
-
+        loadPrefs();
         OnItemSelectedListener spinListen = new OnItemSelectedListener() {
 
 			@Override
 			public void onItemSelected(AdapterView<?> arg0, View arg1,
 					int arg2, long arg3) {
+				mode = spinner.getSelectedItemPosition();
 				savePrefs();
-				populateList(listView);
+				viewListView();
+				populateList();
 			}
 
 			@Override
@@ -155,19 +184,21 @@ public class Force2SD extends Activity {
 			}
         };
         spinner.setOnItemSelectedListener(spinListen);
-        loadPrefs();
-        populateList(listView);
+        populateList();
     }
     
     @Override
     public void onResume() {
     	super.onResume();
+    	populateList();
 //    	root = new Root();
     }
     
     @Override
     public void onPause() {
-    	super.onPause();
+    	super.onPause();    	
+    	listView[0].setAdapter(null);
+    	listView[1].setAdapter(null);
 //    	savePrefs();
 //    	root.close();
     }
@@ -206,15 +237,16 @@ class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 	final Context	 context;
 	final ListView listView;
 	final ProgressBar progress;
-	final boolean fromSD;
+	final Spinner  spinner;
+	final int mode;
 	
-	PopulateListTask(Context c, PackageManager p, ListView l, boolean f) {
+	PopulateListTask(Context c, PackageManager p, ListView l, int m) {
 		context = c;
 		pm		= p;
 		listView = l;
-		fromSD   = f;
-		Log.v("pop","1");
+		mode     = m;
 		progress = (ProgressBar)((Activity)c).findViewById(R.id.progress);
+		spinner = (Spinner)((Activity)c).findViewById(R.id.fromto);
 	}
 	
 	private String sizeText(long size) {
@@ -238,15 +270,15 @@ class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 		}
 	}
 	
-	private boolean movable(ApplicationInfo a, boolean fromSD) {
+	private boolean movable(ApplicationInfo a) {
 		if (a.publicSourceDir == null ||
 				0 != (a.flags & MyApplicationInfo.FLAG_SYSTEM))
 			return false;
 		
-		if (fromSD) 
-			return 0 != (a.flags & MyApplicationInfo.FLAG_EXTERNAL_STORAGE);
-		else
+		if (mode == 0) 
 			return 0 == (a.flags & MyApplicationInfo.FLAG_EXTERNAL_STORAGE);
+		else
+			return 0 != (a.flags & MyApplicationInfo.FLAG_EXTERNAL_STORAGE);
 	}
 
 	@Override
@@ -257,7 +289,7 @@ class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 		List<MyApplicationInfo> myList = new ArrayList<MyApplicationInfo>();
 		
 		for (int i = 0 ; i < list.size() ; i++) {
-			if (movable(list.get(i), fromSD)) {
+			if (movable(list.get(i))) {
 				MyApplicationInfo myAppInfo;
 				myAppInfo = new MyApplicationInfo(pm, list.get(i));
 				myList.add(myAppInfo);
@@ -271,6 +303,7 @@ class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 	protected void onPreExecute() {
 		listView.setVisibility(View.GONE);
 		progress.setVisibility(View.VISIBLE);
+		spinner.setClickable(false);
 	}
 	
 	@Override
@@ -306,6 +339,7 @@ class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 		listView.setAdapter(appInfoAdapter);
 		progress.setVisibility(View.GONE);
 		listView.setVisibility(View.VISIBLE);
+		spinner.setClickable(true);
 	}
 }
 
@@ -313,24 +347,28 @@ class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 class MoveTask extends AsyncTask<Void, Void, Boolean> {
 	final Context	 context;
 	final ProgressBar progress;
-	final String mode;
+	final int    mode;
 	final String fname;
 	final int	  pos;
-	final ListView listView;
+	final ListView[] listView;
+	final Spinner  spinner;
+    static final String MODES[] = {"s","f"};
 	
-	MoveTask(Context c, ListView l, String m, String f, int p) {
+	MoveTask(Context c, ListView[] l, int m, String f, int p) {
 		context = c;
 		mode	= m;
 		fname	= f;
 		pos		= p;
 		listView = l;
 		progress = (ProgressBar)((Activity)c).findViewById(R.id.progress);
+		spinner = (Spinner)((Activity)c).findViewById(R.id.fromto);
 	}
 	
 	@Override
 	protected Boolean doInBackground(Void... c) {
 		Root root = new Root();
-		root.exec("pm install -r -"+mode+" \""+fname+"\"");
+		Log.v("su", "pm install -r -"+MODES[mode]+" \""+fname+"\"");
+		root.exec("pm install -r -"+MODES[mode]+" \""+fname+"\"");
 		root.close(true);
 		return true;
 	}
@@ -338,7 +376,8 @@ class MoveTask extends AsyncTask<Void, Void, Boolean> {
 	@Override
 	protected void onPreExecute() {
 		progress.setVisibility(View.VISIBLE);
-		listView.setVisibility(View.GONE);
+		listView[mode].setVisibility(View.GONE);
+		spinner.setClickable(false);
 	}
 	
 	@Override
@@ -347,11 +386,14 @@ class MoveTask extends AsyncTask<Void, Void, Boolean> {
 		
 		if (!f.exists()) {
 			@SuppressWarnings("unchecked")
-			ArrayAdapter<MyApplicationInfo> a = (ArrayAdapter<MyApplicationInfo>) listView.getAdapter();
+			ArrayAdapter<MyApplicationInfo> a = 
+				(ArrayAdapter<MyApplicationInfo>) listView[mode].getAdapter();
 			a.remove(a.getItem(pos));
+			listView[1-mode].setAdapter(null);			
 		}
 		
 		progress.setVisibility(View.GONE);
-		listView.setVisibility(View.VISIBLE);
+		listView[mode].setVisibility(View.VISIBLE);
+		spinner.setClickable(true);
 	}
 }

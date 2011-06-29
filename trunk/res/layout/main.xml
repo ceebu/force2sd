@@ -18,7 +18,13 @@
 	style="@android:style/Widget.ProgressBar.Large"
 	android:visibility="visible"/>
 <ListView
-	android:id="@+id/movableApps"
+	android:id="@+id/movableApps0"
+	android:layout_width="fill_parent"
+	android:layout_height="fill_parent"
+	android:visibility="gone"
+	/>
+<ListView
+	android:id="@+id/movableApps1"
 	android:layout_width="fill_parent"
 	android:layout_height="fill_parent"
 	android:visibility="gone"
