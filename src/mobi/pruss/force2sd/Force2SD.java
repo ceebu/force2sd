@@ -1,5 +1,7 @@
 package mobi.pruss.force2sd;
 
+import java.io.File;
+import java.text.DecimalFormat;
 import java.util.List;
 import mobi.pruss.force2sd.R;
 import android.app.Activity;
@@ -11,14 +13,19 @@ import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.text.Layout;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.TwoLineListItem;
 
 public class Force2SD extends Activity {
 	private Resources res;
@@ -97,6 +104,7 @@ public class Force2SD extends Activity {
 			}        	
         });
         
+        Log.v("a","b");
         populateList(listView);
     }
     
@@ -117,25 +125,43 @@ class PopulateListTask extends AsyncTask<String, Void, List<ApplicationInfo>> {
 	final PackageManager pm;
 	final Context	 context;
 	final ListView listView;
+	final ProgressBar progress;
 	
 	PopulateListTask(Context c, PackageManager p, ListView l) {
 		context = c;
 		pm		= p;
 		listView = l;
+		Log.v("pop","1");
+		progress = (ProgressBar)((Activity)c).findViewById(R.id.progress);
 	}
 	
-	private boolean movable(ApplicationInfo a) {
-		String dir = a.publicSourceDir;
+	private String getSizeText(String fname) {
+		File f = new File(fname);
+		long size = f.length();
+		DecimalFormat df0 = new DecimalFormat("#"); 
+		DecimalFormat df = new DecimalFormat("#.#"); 
 		
-		if (dir == null)
-			return false;
-		
-		if (!dir.startsWith("/data/app"))
-			return false;
-		
-		// find some way of checking for widgets
-		
-		return true;
+		if (size<1024) {
+			return ""+size+"B";
+		}
+		else if (size<10.05*1024) {
+			return df.format(size/1024)+"kB";
+		}
+		else if (size<1023.5*1024l) {
+			return df0.format(size/1024.)+"kB";
+		}
+		else if (size<9.5*1024l*1024l) {
+			return df.format(size/(1024.*1024))+"MB";
+		}
+		else {
+			return df0.format(size/(1024.*1024))+"MB";
+		}
+	}
+	
+	private boolean movable(ApplicationInfo a) {	
+		return a.publicSourceDir != null && 
+		    0 == (a.flags & ApplicationInfo.FLAG_EXTERNAL_STORAGE) &&
+		    0 == (a.flags & ApplicationInfo.FLAG_SYSTEM); 
 	}
 
 	@Override
@@ -161,16 +187,36 @@ class PopulateListTask extends AsyncTask<String, Void, List<ApplicationInfo>> {
 	
 	@Override
 	protected void onPreExecute() {
-		listView.setVisibility(ListView.INVISIBLE);
+		Log.v("ope","sv");
+		listView.setVisibility(View.GONE);
+		Log.v("ope","sv");
+		progress.setVisibility(View.VISIBLE);
+		Log.v("ope","sv");
 	}
 	
 	@Override
 	protected void onPostExecute(final List<ApplicationInfo> appInfo) {
+		
 		ArrayAdapter<ApplicationInfo> appInfoAdapter = 
-			new ArrayAdapter<ApplicationInfo>(context, android.R.layout.simple_list_item_1, appInfo) {
+			new ArrayAdapter<ApplicationInfo>(context, 
+					R.layout.twoline, 
+					appInfo) {
+
 			public View getView(int position, View convertView, ViewGroup parent) {
-				TextView v = (TextView)super.getView(position, convertView, parent);
-				v.setText(appInfo.get(position).loadLabel(pm));
+				View v;				
+				
+				if (convertView == null) {
+	                v = View.inflate(context, R.layout.twoline, null);
+	            }
+				else {
+					v = convertView;
+				}
+
+				((TextView)v.findViewById(R.id.text1))
+					.setText(appInfo.get(position).loadLabel(pm));
+				((TextView)v.findViewById(R.id.text2))
+					.setText(getSizeText(appInfo.get(position).publicSourceDir));
+				((TextView)v.findViewById(R.id.text2)).setGravity(Gravity.RIGHT);
 				return v;
 			}				
 		};
@@ -179,6 +225,7 @@ class PopulateListTask extends AsyncTask<String, Void, List<ApplicationInfo>> {
 				 ApplicationInfo.DisplayNameComparator(pm));
 		
 		listView.setAdapter(appInfoAdapter);
-		listView.setVisibility(ListView.VISIBLE);
+		progress.setVisibility(View.GONE);
+		listView.setVisibility(View.VISIBLE);
 	}
 }

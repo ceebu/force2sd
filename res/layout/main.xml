@@ -6,11 +6,16 @@
     android:layout_width="fill_parent"
     android:layout_height="fill_parent"
     >
+<ProgressBar
+	android:id="@+id/progress"
+	android:layout_width="wrap_content"
+	android:layout_height="wrap_content"
+	style="@android:style/Widget.ProgressBar.Large"
+	android:visibility="gone"/>    
 <ListView
 	android:id="@+id/movableApps"
 	android:layout_width="fill_parent"
 	android:layout_height="fill_parent"
-	android:visibility="invisible"
-	>
-</ListView>
+	android:visibility="gone"
+	/>
 </LinearLayout>
