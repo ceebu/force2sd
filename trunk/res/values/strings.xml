@@ -4,7 +4,8 @@
 	<string name="incomp_device_title">Incompatible device</string>
 	<string name="move_query_title">Moving application</string>
 	<string name="move_query1">Are you sure you want to move </string>
-	<string name="move_query2"> to internal storage or SD card?</string>
+	<string name="move_query2_tosd"> to storage or SD card?</string>
+	<string name="move_query2_fromsd"> from storage or SD card?</string>
 	<string name="incomp_device">Your device is not compatible with this application.</string>
     <string name="need_root_title">Need root privileges</string>
     <string name="need_root">You need root privileges on your device for SuperDim
@@ -14,4 +15,9 @@
     <string name="ok">OK</string>
 	<string name="yes">Yes</string>
 	<string name="no">No</string>
+    <string name="planet_prompt">Choose a planet</string>
+    <string-array name="fromto_options">
+        <item>to SD</item>
+        <item>from SD</item>
+    </string-array>
 </resources>
