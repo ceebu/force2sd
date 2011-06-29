@@ -11,7 +11,12 @@
 	android:layout_width="wrap_content"
 	android:layout_height="wrap_content"
 	style="@android:style/Widget.ProgressBar.Large"
-	android:visibility="gone"/>    
+	android:visibility="visible"/>
+<Spinner
+	android:id="@+id/fromto"
+	android:layout_width="fill_parent"
+	android:layout_height="wrap_content"
+	/>	    
 <ListView
 	android:id="@+id/movableApps"
 	android:layout_width="fill_parent"
