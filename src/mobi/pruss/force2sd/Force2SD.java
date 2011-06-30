@@ -17,12 +17,17 @@ import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.StatFs;
 import android.text.Layout;
 import android.util.Log;
+import android.view.ContextMenu;
 import android.view.Gravity;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.ContextMenu.ContextMenuInfo;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.AdapterView.OnItemSelectedListener;
@@ -31,6 +36,7 @@ import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
 import android.widget.TwoLineListItem;
 
 public class Force2SD extends Activity {
@@ -39,6 +45,10 @@ public class Force2SD extends Activity {
     PackageManager pm;
     Spinner spinner;
     int		mode;
+    static final int MENU_MOVE = 0;
+    static final int MENU_UNINSTALL = 1;
+    static final int COMMAND_MOVE = 1;
+    static final int COMMAND_UNINSTALL = 2;
     
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
@@ -90,13 +100,21 @@ public class Force2SD extends Activity {
 	private void populateList() {
 		if (listView[mode].getAdapter() == null) 
 			new PopulateListTask(this, pm, listView[mode], mode ).execute();
+        updateTitle();
 	}
 	
 	private void doMove(int pos) {
         MyApplicationInfo appInfo = (MyApplicationInfo) listView[mode].getAdapter().getItem(pos);
         String fname = appInfo.publicSourceDir;      
 		
-		new MoveTask(this, listView, mode, fname, pos).execute();
+		new MoveTask(this, listView, mode, fname, pos, COMMAND_MOVE).execute();
+	}
+	
+	private void doUninstall(int pos) {
+        MyApplicationInfo appInfo = (MyApplicationInfo) listView[mode].getAdapter().getItem(pos);
+        String fname = appInfo.packageName;      
+		
+		new MoveTask(this, listView, mode, fname, pos, COMMAND_UNINSTALL).execute();		
 	}
 	
 	private void move(final int pos) {
@@ -149,17 +167,18 @@ public class Force2SD extends Activity {
 				move(position);				
 			}        	
         });
+        registerForContextMenu(listView[0]);
         
         listView[1] = (ListView) findViewById(R.id.movableApps1);
         
         listView[1].setOnItemClickListener(new OnItemClickListener() {
-
 			@Override
 			public void onItemClick(AdapterView<?> parent, View v, int position,
 					long id) {
 				move(position);				
 			}        	
         });
+        registerForContextMenu(listView[1]);
         
         spinner = (Spinner)findViewById(R.id.fromto);
         
@@ -186,6 +205,34 @@ public class Force2SD extends Activity {
         spinner.setOnItemSelectedListener(spinListen);
         populateList();
     }
+	
+	static public String sizeText(long size) {
+		DecimalFormat df0 = new DecimalFormat("#"); 
+		DecimalFormat df = new DecimalFormat("#.#"); 
+		
+		if (size<1024) {
+			return ""+size+"B";
+		}
+		else if (size<10.05*1024) {
+			return df.format(size/1024)+"kB";
+		}
+		else if (size<1023.5*1024l) {
+			return df0.format(size/1024.)+"kB";
+		}
+		else if (size<9.5*1024l*1024l) {
+			return df.format(size/(1024.*1024))+"MB";
+		}
+		else {
+			return df0.format(size/(1024.*1024))+"MB";
+		}
+	}
+	
+	public void updateTitle() {
+		StatFs stats = new StatFs("/data");
+		long free = (long)stats.getAvailableBlocks() * (long)stats.getBlockSize();
+		String title = sizeText(free) + " free in internal area";
+		setTitle(title);
+	}
     
     @Override
     public void onResume() {
@@ -201,6 +248,33 @@ public class Force2SD extends Activity {
     	listView[1].setAdapter(null);
 //    	savePrefs();
 //    	root.close();
+    }
+
+
+    @Override
+    public void onCreateContextMenu(ContextMenu menu, View v, ContextMenuInfo menuInfo) {
+    	super.onCreateContextMenu(menu, v, menuInfo);
+		menu.setHeaderTitle("Operations");
+		menu.add(0,MENU_MOVE,Menu.NONE,"Move");
+		menu.add(0,MENU_UNINSTALL,Menu.NONE,"Uninstall");
+    }
+
+
+    @Override
+    public boolean onContextItemSelected(MenuItem item) {
+    	int position =  
+    		((AdapterView.AdapterContextMenuInfo)item.getMenuInfo()).position;
+    	
+    	switch(item.getItemId()) {
+    	case MENU_UNINSTALL:
+    		doUninstall(position);
+    		return true;
+    	case MENU_MOVE:
+    		doMove(position);
+    		return true;
+    	default:
+    		return false;
+    	}
     }
 }
 
@@ -247,27 +321,6 @@ class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 		mode     = m;
 		progress = (ProgressBar)((Activity)c).findViewById(R.id.progress);
 		spinner = (Spinner)((Activity)c).findViewById(R.id.fromto);
-	}
-	
-	private String sizeText(long size) {
-		DecimalFormat df0 = new DecimalFormat("#"); 
-		DecimalFormat df = new DecimalFormat("#.#"); 
-		
-		if (size<1024) {
-			return ""+size+"B";
-		}
-		else if (size<10.05*1024) {
-			return df.format(size/1024)+"kB";
-		}
-		else if (size<1023.5*1024l) {
-			return df0.format(size/1024.)+"kB";
-		}
-		else if (size<9.5*1024l*1024l) {
-			return df.format(size/(1024.*1024))+"MB";
-		}
-		else {
-			return df0.format(size/(1024.*1024))+"MB";
-		}
 	}
 	
 	private boolean movable(ApplicationInfo a) {
@@ -327,7 +380,7 @@ class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 				((TextView)v.findViewById(R.id.text1))
 					.setText(appInfo.get(position).getLabel());
 				((TextView)v.findViewById(R.id.text2))
-					.setText(sizeText(appInfo.get(position).getSize()));
+					.setText(Force2SD.sizeText(appInfo.get(position).getSize()));
 				((TextView)v.findViewById(R.id.text2)).setGravity(Gravity.RIGHT);
 				return v;
 			}				
@@ -343,7 +396,6 @@ class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 	}
 }
 
-
 class MoveTask extends AsyncTask<Void, Void, Boolean> {
 	final Context	 context;
 	final ProgressBar progress;
@@ -352,14 +404,16 @@ class MoveTask extends AsyncTask<Void, Void, Boolean> {
 	final int	  pos;
 	final ListView[] listView;
 	final Spinner  spinner;
+	final int	command;
     static final String MODES[] = {"s","f"};
 	
-	MoveTask(Context c, ListView[] l, int m, String f, int p) {
+	MoveTask(Context c, ListView[] l, int m, String f, int p, int cmd) {
 		context = c;
 		mode	= m;
 		fname	= f;
 		pos		= p;
 		listView = l;
+		command	 = cmd;
 		progress = (ProgressBar)((Activity)c).findViewById(R.id.progress);
 		spinner = (Spinner)((Activity)c).findViewById(R.id.fromto);
 	}
@@ -367,10 +421,19 @@ class MoveTask extends AsyncTask<Void, Void, Boolean> {
 	@Override
 	protected Boolean doInBackground(Void... c) {
 		Root root = new Root();
-		Log.v("su", "pm install -r -"+MODES[mode]+" \""+fname+"\"");
-		root.exec("pm install -r -"+MODES[mode]+" \""+fname+"\"");
-		root.close(true);
-		return true;
+		Boolean success = false;
+		switch(command) {
+		case Force2SD.COMMAND_MOVE:
+			success = root.execOne("pm install -r -"+MODES[mode]+" \""+fname+"\"","Success.*");
+			break;
+		case Force2SD.COMMAND_UNINSTALL:
+			success = root.execOne("pm uninstall "+fname,"Success.*");
+			break;
+		default:
+			break;
+		}
+		root.close();
+		return success;
 	}
 	
 	@Override
@@ -381,19 +444,19 @@ class MoveTask extends AsyncTask<Void, Void, Boolean> {
 	}
 	
 	@Override
-	protected void onPostExecute(Boolean b) {
-		File f = new File(fname);
-		
-		if (!f.exists()) {
+	protected void onPostExecute(Boolean success) {
+		if (success) {
 			@SuppressWarnings("unchecked")
 			ArrayAdapter<MyApplicationInfo> a = 
 				(ArrayAdapter<MyApplicationInfo>) listView[mode].getAdapter();
 			a.remove(a.getItem(pos));
-			listView[1-mode].setAdapter(null);			
+			listView[1-mode].setAdapter(null);
+			Toast.makeText(context, command==Force2SD.COMMAND_MOVE?"Moved!":"Uninstalled!", Toast.LENGTH_SHORT).show();
 		}
 		
 		progress.setVisibility(View.GONE);
 		listView[mode].setVisibility(View.VISIBLE);
 		spinner.setClickable(true);
+		((Force2SD)context).updateTitle();
 	}
 }
