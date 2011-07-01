@@ -3,6 +3,7 @@ package mobi.pruss.force2sd;
 import java.io.File;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import mobi.pruss.force2sd.R;
 import android.app.Activity;
@@ -12,6 +13,7 @@ import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.ApplicationInfo.DisplayNameComparator;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.content.res.Resources;
@@ -45,10 +47,14 @@ public class Force2SD extends Activity {
     PackageManager pm;
     Spinner spinner;
     int		mode;
+    int     sort;
     static final int MENU_MOVE = 0;
     static final int MENU_UNINSTALL = 1;
     static final int COMMAND_MOVE = 1;
     static final int COMMAND_UNINSTALL = 2;
+    static final int SORT_ALPHA = 0;
+    static final int SORT_INC_SIZE = 1;
+    static final int SORT_DEC_SIZE = 2;
     
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
@@ -85,6 +91,7 @@ public class Force2SD extends Activity {
 		SharedPreferences pref = getPreferences(MODE_PRIVATE);
 		
 		mode = pref.getInt("mode", 0);
+		sort = pref.getInt("sort", SORT_ALPHA);
 		spinner.setSelection(mode);
 		viewListView();
 	}
@@ -94,7 +101,24 @@ public class Force2SD extends Activity {
 		SharedPreferences.Editor ed = pref.edit();		
 		
 		ed.putInt("mode", mode);
+		ed.putInt("sort", sort);
 		ed.commit();
+	}
+	
+	@SuppressWarnings("unchecked")
+	public void sortList(ListView list) {
+		ArrayAdapter<MyApplicationInfo> adapter = 
+			(ArrayAdapter<MyApplicationInfo>) list.getAdapter();
+		
+		switch(sort) {
+		default: /* SORT_ALPHA */
+			adapter.sort(new MyApplicationInfo.DisplayNameComparator(pm));
+			break;
+		case SORT_DEC_SIZE:
+		case SORT_INC_SIZE:
+			adapter.sort(new SizeComparator(sort));
+			break;
+		}
 	}
 
 	private void populateList() {
@@ -258,7 +282,29 @@ public class Force2SD extends Activity {
 		menu.add(0,MENU_MOVE,Menu.NONE,"Move");
 		menu.add(0,MENU_UNINSTALL,Menu.NONE,"Uninstall");
     }
+    
+    private void setSort(int s) {
+    	sort = s;
+    	if (listView[mode].getVisibility() != View.GONE)
+    		sortList(listView[mode]);
+    }
 
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+    	switch(item.getItemId()) {
+    	case R.id.sort_alpha:
+    		setSort(SORT_ALPHA);
+    		return true;
+    	case R.id.sort_inc_size:
+    		setSort(SORT_INC_SIZE);
+    		return true;
+    	case R.id.sort_dec_size:
+    		setSort(SORT_DEC_SIZE);
+    		return true;
+    	default:
+    		return false;
+    	}
+    }
 
     @Override
     public boolean onContextItemSelected(MenuItem item) {
@@ -276,6 +322,37 @@ public class Force2SD extends Activity {
     		return false;
     	}
     }
+	
+	@Override
+	public boolean onCreateOptionsMenu(Menu menu) {
+		getMenuInflater().inflate(R.menu.main, menu);
+	    return true;
+	}
+}
+
+class SizeComparator implements Comparator<MyApplicationInfo> {
+	int sort;
+	
+	public SizeComparator(int s) {
+		sort = s;
+	}
+	
+	public int compare(MyApplicationInfo a, MyApplicationInfo b) {
+		int c;
+		if (a.getSize() < b.getSize()) {
+			c = -1;
+		}
+		else if (b.getSize() < a.getSize()) {
+			c = 1;
+		}
+		else {
+			c = 0;
+		}
+		if (sort == Force2SD.SORT_DEC_SIZE)
+			return -c;
+		else
+			return c;
+	}
 }
 
 class MyApplicationInfo extends ApplicationInfo {
@@ -386,10 +463,8 @@ class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 			}				
 		};
 		
-		appInfoAdapter.sort(new
-				 MyApplicationInfo.DisplayNameComparator(pm));
-		
 		listView.setAdapter(appInfoAdapter);
+		((Force2SD)context).sortList(listView);		
 		progress.setVisibility(View.GONE);
 		listView.setVisibility(View.VISIBLE);
 		spinner.setClickable(true);
