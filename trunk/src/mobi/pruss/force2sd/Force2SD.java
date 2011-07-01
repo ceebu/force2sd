@@ -8,13 +8,17 @@ import java.util.List;
 import mobi.pruss.force2sd.R;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.appwidget.AppWidgetManager;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
+import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.ApplicationInfo.DisplayNameComparator;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.os.AsyncTask;
@@ -22,6 +26,8 @@ import android.os.Bundle;
 import android.os.StatFs;
 import android.text.Layout;
 import android.util.Log;
+import android.view.inputmethod.InputMethodInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.view.ContextMenu;
 import android.view.Gravity;
 import android.view.Menu;
@@ -59,6 +65,30 @@ public class Force2SD extends Activity {
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+    }
+    
+	public static boolean match(String p, List<ResolveInfo> m) {
+		if (m==null)
+			return false;
+		
+		int length = m.size();
+		
+		for (int i=0; i<length; i++)
+			if (p.equals(m.get(i).activityInfo.packageName))
+				return true;
+		
+		return false;
+	}
+	
+
+	private List<ResolveInfo> getWidgets() {
+        Intent i = new Intent();
+        i.setAction("android.appwidget.action.APPWIDGET_UPDATE");
+        return pm.queryBroadcastReceivers(i, 0);
+    }
+    
+    private boolean isWidget(String p) {
+    	return match(p, getWidgets());
     }
     
     private void viewListView() {
@@ -122,16 +152,29 @@ public class Force2SD extends Activity {
 	}
 
 	private void populateList() {
-		if (listView[mode].getAdapter() == null) 
+		if (listView[mode].getAdapter() == null) {
 			new PopulateListTask(this, pm, listView[mode], mode ).execute();
+		}
+		else { 
+			sortList(listView[mode]);
+		}
         updateTitle();
 	}
 	
 	private void doMove(int pos) {
         MyApplicationInfo appInfo = (MyApplicationInfo) listView[mode].getAdapter().getItem(pos);
-        String fname = appInfo.publicSourceDir;      
+        String fname = appInfo.publicSourceDir;
+        final String modes[] = {"s","f"};
+        
+        String options = "-"+modes[mode];
+        
+        String installer = pm.getInstallerPackageName(appInfo.packageName);
+        
+        if (installer != null && installer.length()>0) {
+        	options = options + "-i \"" + installer + "\"";
+        }
 		
-		new MoveTask(this, listView, mode, fname, pos, COMMAND_MOVE).execute();
+		new MoveTask(this, listView, mode, fname, pos, COMMAND_MOVE).execute(options);
 	}
 	
 	private void doUninstall(int pos) {
@@ -145,15 +188,28 @@ public class Force2SD extends Activity {
         AlertDialog alertDialog = new AlertDialog.Builder(this).create();
         MyApplicationInfo appInfo = 
         	(MyApplicationInfo) listView[mode].getAdapter().getItem(pos);
+        String message;
         
-        alertDialog.setTitle(R.string.move_query_title);
-        
-        String message = 
-        	(String)res.getText(R.string.move_query1) +
-        	" " +
-        	appInfo.getLabel() +
-        	" " +
-        	res.getText(mode==1? R.string.move_query2_fromsd : R.string.move_query2_tosd);
+        if (mode == 0 && isWidget(appInfo.packageName)) {
+        	alertDialog.setTitle(R.string.move_query_title_widget);
+            
+            message = 
+            	(String)res.getText(R.string.move_query1_widget) +
+            	" " +
+            	appInfo.getLabel() +
+            	" " +
+            	res.getText(R.string.move_query2_widget);
+        }
+        else {
+	        alertDialog.setTitle(R.string.move_query_title);
+	        
+	        message = 
+	        	(String)res.getText(R.string.move_query1) +
+	        	" " +
+	        	appInfo.getLabel() +
+	        	" " +
+	        	res.getText(mode==1? R.string.move_query2_fromsd : R.string.move_query2_tosd);
+        }
 
         alertDialog.setMessage(message);
         alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, 
@@ -201,7 +257,7 @@ public class Force2SD extends Activity {
 					long id) {
 				move(position);				
 			}        	
-        });
+        });                   
         registerForContextMenu(listView[1]);
         
         spinner = (Spinner)findViewById(R.id.fromto);
@@ -216,10 +272,12 @@ public class Force2SD extends Activity {
 			@Override
 			public void onItemSelected(AdapterView<?> arg0, View arg1,
 					int arg2, long arg3) {
-				mode = spinner.getSelectedItemPosition();
-				savePrefs();
-				viewListView();
-				populateList();
+				if (mode != spinner.getSelectedItemPosition()) {
+					mode = spinner.getSelectedItemPosition();
+					savePrefs();
+					viewListView();
+					populateList();
+				}
 			}
 
 			@Override
@@ -227,7 +285,6 @@ public class Force2SD extends Activity {
 			}
         };
         spinner.setOnItemSelectedListener(spinListen);
-        populateList();
     }
 	
 	static public String sizeText(long size) {
@@ -259,21 +316,23 @@ public class Force2SD extends Activity {
 	}
     
     @Override
+    public void onStart() {
+    	super.onStart();
+    	listView[0].setAdapter(null);
+    	listView[1].setAdapter(null);
+    	populateList();
+    }
+    
+    @Override
     public void onResume() {
     	super.onResume();
     	populateList();
-//    	root = new Root();
     }
     
     @Override
     public void onPause() {
     	super.onPause();    	
-    	listView[0].setAdapter(null);
-    	listView[1].setAdapter(null);
-//    	savePrefs();
-//    	root.close();
     }
-
 
     @Override
     public void onCreateContextMenu(ContextMenu menu, View v, ContextMenuInfo menuInfo) {
@@ -316,7 +375,13 @@ public class Force2SD extends Activity {
     		doUninstall(position);
     		return true;
     	case MENU_MOVE:
-    		doMove(position);
+    		if (mode == 0 && 
+    			isWidget(((MyApplicationInfo) listView[mode].getAdapter().getItem(position)).packageName)) {
+    			move(position);
+    		}
+    		else {
+    			doMove(position);
+    		}
     		return true;
     	default:
     		return false;
@@ -400,15 +465,37 @@ class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 		spinner = (Spinner)((Activity)c).findViewById(R.id.fromto);
 	}
 	
-	private boolean movable(ApplicationInfo a) {
+	public boolean matchIM(String p, List<InputMethodInfo> m) {
+		if (m==null)
+			return false;
+		
+		int length = m.size();
+		
+		for (int i=0; i<length; i++)
+			if (p.equals(m.get(i).getPackageName()))
+				return true;
+		
+		return false;
+	}
+	
+	private boolean movable(ApplicationInfo a, List<ResolveInfo> match1,
+			List<InputMethodInfo> match2) {
 		if (a.publicSourceDir == null ||
 				0 != (a.flags & MyApplicationInfo.FLAG_SYSTEM))
 			return false;
 		
-		if (mode == 0) 
-			return 0 == (a.flags & MyApplicationInfo.FLAG_EXTERNAL_STORAGE);
-		else
-			return 0 != (a.flags & MyApplicationInfo.FLAG_EXTERNAL_STORAGE);
+		if (mode == 0 && 0 != (a.flags & MyApplicationInfo.FLAG_EXTERNAL_STORAGE))
+			return false;
+		if (mode == 1 && 0 == (a.flags & MyApplicationInfo.FLAG_EXTERNAL_STORAGE))
+			return false;
+		
+		if (Force2SD.match(a.packageName, match1))
+			return false;
+		
+		if (matchIM(a.packageName, match2))
+			return false;
+		
+		return true;
 	}
 
 	@Override
@@ -416,10 +503,23 @@ class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 		List<ApplicationInfo> list = 
 			pm.getInstalledApplications(0);
 		
+		List<ResolveInfo> launchers = null;
+		List<InputMethodInfo> inputMethods = null;
+		
+		if (mode == 0) {
+			Intent i = new Intent(); 
+	        i.setAction(Intent.ACTION_MAIN); 
+	        i.addCategory(Intent.CATEGORY_HOME);
+	        launchers = pm.queryIntentActivities(i, 0);
+	        
+	        InputMethodManager mgr = (InputMethodManager)context.getSystemService(Context.INPUT_METHOD_SERVICE);
+	        inputMethods = mgr.getInputMethodList();
+		}
+		
 		List<MyApplicationInfo> myList = new ArrayList<MyApplicationInfo>();
 		
 		for (int i = 0 ; i < list.size() ; i++) {
-			if (movable(list.get(i))) {
+			if (movable(list.get(i), launchers, inputMethods)) {
 				MyApplicationInfo myAppInfo;
 				myAppInfo = new MyApplicationInfo(pm, list.get(i));
 				myList.add(myAppInfo);
@@ -471,7 +571,7 @@ class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 	}
 }
 
-class MoveTask extends AsyncTask<Void, Void, Boolean> {
+class MoveTask extends AsyncTask<String, Void, Boolean> {
 	final Context	 context;
 	final ProgressBar progress;
 	final int    mode;
@@ -480,7 +580,6 @@ class MoveTask extends AsyncTask<Void, Void, Boolean> {
 	final ListView[] listView;
 	final Spinner  spinner;
 	final int	command;
-    static final String MODES[] = {"s","f"};
 	
 	MoveTask(Context c, ListView[] l, int m, String f, int p, int cmd) {
 		context = c;
@@ -494,12 +593,12 @@ class MoveTask extends AsyncTask<Void, Void, Boolean> {
 	}
 	
 	@Override
-	protected Boolean doInBackground(Void... c) {
+	protected Boolean doInBackground(String... opt) {
 		Root root = new Root();
 		Boolean success = false;
 		switch(command) {
 		case Force2SD.COMMAND_MOVE:
-			success = root.execOne("pm install -r -"+MODES[mode]+" \""+fname+"\"","Success.*");
+			success = root.execOne("pm install -r " + opt[0] + " \""+fname+"\"","Success.*");
 			break;
 		case Force2SD.COMMAND_UNINSTALL:
 			success = root.execOne("pm uninstall "+fname,"Success.*");
@@ -527,6 +626,9 @@ class MoveTask extends AsyncTask<Void, Void, Boolean> {
 			a.remove(a.getItem(pos));
 			listView[1-mode].setAdapter(null);
 			Toast.makeText(context, command==Force2SD.COMMAND_MOVE?"Moved!":"Uninstalled!", Toast.LENGTH_SHORT).show();
+		}
+		else {
+			Toast.makeText(context, "Operation unsuccessful!", Toast.LENGTH_SHORT).show();
 		}
 		
 		progress.setVisibility(View.GONE);
