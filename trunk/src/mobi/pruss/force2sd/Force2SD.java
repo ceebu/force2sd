@@ -61,6 +61,7 @@ public class Force2SD extends Activity {
     static final int SORT_ALPHA = 0;
     static final int SORT_INC_SIZE = 1;
     static final int SORT_DEC_SIZE = 2;
+    static boolean quickExit = false;
     
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
@@ -102,6 +103,7 @@ public class Force2SD extends Activity {
     }
     
 	private void fatalError(int title, int msg) {
+		quickExit = true;
         AlertDialog alertDialog = new AlertDialog.Builder(this).create();
         
         Log.e("fatalError", (String) res.getText(title));
@@ -232,11 +234,6 @@ public class Force2SD extends Activity {
         setContentView(R.layout.main);
         res = getResources();
 
-        if (!Root.test()) {
-        	fatalError(R.string.need_root_title, R.string.need_root);
-        	return;
-        }
-        
         listView[0] = (ListView) findViewById(R.id.movableApps0);
         
         listView[0].setOnItemClickListener(new OnItemClickListener() {
@@ -318,6 +315,12 @@ public class Force2SD extends Activity {
     @Override
     public void onStart() {
     	super.onStart();
+
+    	if (!Root.test()) {
+        	fatalError(R.string.need_root_title, R.string.need_root);
+        	return;
+        }
+        
     	listView[0].setAdapter(null);
     	listView[1].setAdapter(null);
     	populateList();
@@ -326,6 +329,10 @@ public class Force2SD extends Activity {
     @Override
     public void onResume() {
     	super.onResume();
+    	
+    	if (quickExit)
+    		return;
+    	
     	populateList();
     }
     
