@@ -14,7 +14,7 @@
 	<string name="move_query2_fromsd"> from external storage or SD card?</string>
 	<string name="incomp_device">Your device is not compatible with this application.</string>
     <string name="need_root_title">Need root privileges</string>
-    <string name="need_root">You need root privileges on your device for SuperDim
+    <string name="need_root">You need root privileges on your device for Force2SD
     to work.  
     You may want to search the web for "root" and the name of your device on how 
     to achieve this and consult local laws.</string>
