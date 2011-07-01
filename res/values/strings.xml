@@ -2,10 +2,16 @@
 <resources>
 	<string name="app_name">Force2SD</string>
 	<string name="incomp_device_title">Incompatible device</string>
-	<string name="move_query_title">Moving application</string>
+	<string name="move_query_title_widget">Package provides widget</string>
+	<string name="move_query1_widget">The</string>
+	<string name="move_query2_widget">package provides a home-screen widget.
+	Home screen widgets moved to SD/storage will no longer work.  Are you sure
+	you want to move this to external storage or SD card?  (You can always move
+	it back.)</string>
+	<string name="move_query_title">Moving application</string>	
 	<string name="move_query1">Are you sure you want to move </string>
-	<string name="move_query2_tosd"> to storage or SD card?</string>
-	<string name="move_query2_fromsd"> from storage or SD card?</string>
+	<string name="move_query2_tosd"> to external storage or SD card?</string>
+	<string name="move_query2_fromsd"> from external storage or SD card?</string>
 	<string name="incomp_device">Your device is not compatible with this application.</string>
     <string name="need_root_title">Need root privileges</string>
     <string name="need_root">You need root privileges on your device for SuperDim
