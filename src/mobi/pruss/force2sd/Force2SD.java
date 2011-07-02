@@ -173,7 +173,7 @@ public class Force2SD extends Activity {
         String installer = pm.getInstallerPackageName(appInfo.packageName);
         
         if (installer != null && installer.length()>0) {
-        	options = options + "-i \"" + installer + "\"";
+        	options = options + " -i \"" + installer + "\"";
         }
 		
 		new MoveTask(this, listView, mode, fname, pos, COMMAND_MOVE).execute(options);
