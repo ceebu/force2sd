@@ -5,6 +5,8 @@ import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
+
 import mobi.pruss.force2sd.R;
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -18,9 +20,11 @@ import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.ApplicationInfo.DisplayNameComparator;
 import android.content.pm.PackageManager;
+import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
 import android.content.res.Resources;
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.StatFs;
@@ -61,6 +65,8 @@ public class Force2SD extends Activity {
     static final int SORT_ALPHA = 0;
     static final int SORT_INC_SIZE = 1;
     static final int SORT_DEC_SIZE = 2;
+    static int limit;
+    static int count = 0;
     static boolean quickExit = false;
     
     @Override
@@ -124,6 +130,7 @@ public class Force2SD extends Activity {
 		
 		mode = pref.getInt("mode", 0);
 		sort = pref.getInt("sort", SORT_ALPHA);
+		count = pref.getInt("count", 0);
 		spinner.setSelection(mode);
 		viewListView();
 	}
@@ -144,11 +151,11 @@ public class Force2SD extends Activity {
 		
 		switch(sort) {
 		default: /* SORT_ALPHA */
-			adapter.sort(new MyApplicationInfo.DisplayNameComparator(pm));
-			break;
+//			adapter.sort(new MyApplicationInfo.DisplayNameComparator(pm));
+//			break;
 		case SORT_DEC_SIZE:
 		case SORT_INC_SIZE:
-			adapter.sort(new SizeComparator(sort));
+			adapter.sort(new MyComparator(sort));
 			break;
 		}
 	}
@@ -164,6 +171,18 @@ public class Force2SD extends Activity {
 	}
 	
 	private void doMove(int pos) {
+		if (mode == 0 && limit > 0) {
+			if (count>=limit) {
+				pleaseBuy(true);
+				return;
+			}
+			count++;
+			SharedPreferences pref = getPreferences(MODE_PRIVATE);
+			SharedPreferences.Editor ed = pref.edit();		
+			ed.putInt("count", count);
+			ed.commit();
+		}
+		
         MyApplicationInfo appInfo = (MyApplicationInfo) listView[mode].getAdapter().getItem(pos);
         String fname = appInfo.publicSourceDir;
         final String modes[] = {"s","f"};
@@ -175,8 +194,9 @@ public class Force2SD extends Activity {
         if (installer != null && installer.length()>0) {
         	options = options + " -i \"" + installer + "\"";
         }
+
+        new MoveTask(this, listView, mode, fname, pos, COMMAND_MOVE).execute(options);
 		
-		new MoveTask(this, listView, mode, fname, pos, COMMAND_MOVE).execute(options);
 	}
 	
 	private void doUninstall(int pos) {
@@ -225,9 +245,40 @@ public class Force2SD extends Activity {
         alertDialog.show();		
 	}
 	
+	private void pleaseBuy(boolean expired) {
+        AlertDialog alertDialog = new AlertDialog.Builder(this).create();
+
+        alertDialog.setTitle(expired?"Lite version expired":"Lite version");
+        
+        alertDialog.setMessage("The lite version of Force 2SD only lets you "+
+        		"move three apps to SD or external storage, though it lets you "+
+        		"move an unlimited number of apps back from SD.");
+        
+        alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, 
+        		"Get full version", 
+        	new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int which) {
+            	Intent i = new Intent(Intent.ACTION_VIEW);
+            	i.setData(Uri.parse("market://details?id=mobi.pruss.force2sd"));
+            	startActivity(i);
+            } });
+        alertDialog.setButton(DialogInterface.BUTTON_NEGATIVE, 
+        		"Not yet", 
+        	new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int which) {} });
+        alertDialog.show();		
+	}
+	
 	@Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        if (getPackageName().contains("lite")) {
+        	limit = 3;
+        }
+        else {
+        	limit = 0;
+        }
         
         pm = getPackageManager();
         
@@ -282,6 +333,8 @@ public class Force2SD extends Activity {
 			}
         };
         spinner.setOnItemSelectedListener(spinListen);
+        if (limit>0)
+        	pleaseBuy(count >= limit);
     }
 	
 	static public String sizeText(long size) {
@@ -353,6 +406,7 @@ public class Force2SD extends Activity {
     	sort = s;
     	if (listView[mode].getVisibility() != View.GONE)
     		sortList(listView[mode]);
+    	savePrefs();
     }
 
     @Override
@@ -402,15 +456,20 @@ public class Force2SD extends Activity {
 	}
 }
 
-class SizeComparator implements Comparator<MyApplicationInfo> {
+class MyComparator implements Comparator<MyApplicationInfo> {
 	int sort;
 	
-	public SizeComparator(int s) {
+	public MyComparator(int s) {
 		sort = s;
 	}
 	
 	public int compare(MyApplicationInfo a, MyApplicationInfo b) {
 		int c;
+		
+		if (sort == Force2SD.SORT_ALPHA) {
+			return a.getLabel().compareToIgnoreCase(b.getLabel());
+		}
+		
 		if (a.getSize() < b.getSize()) {
 			c = -1;
 		}
@@ -430,19 +489,49 @@ class SizeComparator implements Comparator<MyApplicationInfo> {
 class MyApplicationInfo extends ApplicationInfo {
 	private long size;
 	private String label;
+	private int versionCode;
 	
-	public MyApplicationInfo(PackageManager pm, ApplicationInfo a) {
+	String getKey() {
+		return Locale.getDefault().toString() + ".v" + versionCode + "." + size + "." + packageName;
+	}
+	
+	public MyApplicationInfo(MyCache cache, PackageManager pm, ApplicationInfo a) {
 		super(a);
 		
 		File f = new File(publicSourceDir);
 		size = f.length();
+
+		try {
+			versionCode = (pm.getPackageInfo(packageName, 0)).versionCode;
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			versionCode = 0;
+		}
 		
-		CharSequence l = loadLabel(pm);
+		if (cache != null) {
+			String cached = cache.lookup(getKey());
+			if (cached != null) {
+				label = cached;
+				return;
+			}
+		}
+		
+		CharSequence l = pm.getApplicationLabel((ApplicationInfo)this);
 		if (l == null) {
 			label = packageName;
 		}
-		else {
+		else {			
 			label = (String)l;
+			if (label.equals("Angry Birds")) {
+				if(packageName.startsWith("com.rovio.angrybirdsrio")) {
+					label = label + " Rio";
+				}
+				else if (packageName.startsWith("com.rovio.angrybirdsseasons")) {
+					label = label + " Seasons";
+				}
+			}
+			if (cache != null)
+				cache.add(getKey(), label);
 		}
 	}
 	
@@ -525,13 +614,17 @@ class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 		
 		List<MyApplicationInfo> myList = new ArrayList<MyApplicationInfo>();
 		
+		MyCache cache = new MyCache(MyCache.genFilename(context, "app_labels"));
+		 
 		for (int i = 0 ; i < list.size() ; i++) {
 			if (movable(list.get(i), launchers, inputMethods)) {
 				MyApplicationInfo myAppInfo;
-				myAppInfo = new MyApplicationInfo(pm, list.get(i));
+				myAppInfo = new MyApplicationInfo(
+						cache, pm, list.get(i));
 				myList.add(myAppInfo);
 			}
 		}
+		cache.commit();
 		
 		return myList;
 	}
