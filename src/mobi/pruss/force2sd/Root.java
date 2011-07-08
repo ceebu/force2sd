@@ -11,6 +11,10 @@ public class Root {
 	private DataOutputStream rootCommands;
 	private Process rootShell;
 
+	public boolean isValid() {
+		return rootCommands != null;
+	}
+
 	public Root() {		
 		try {
 			rootShell = new ProcessBuilder() 
