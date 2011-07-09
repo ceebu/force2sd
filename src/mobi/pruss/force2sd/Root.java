@@ -101,4 +101,29 @@ public class Root {
 			Log.e("Error executing",s);
 		}
 	}
+	
+	public static String execGetOneLine(String cmd) {
+		try {
+			Process p = new ProcessBuilder() 
+			.command("su")
+			.redirectErrorStream(true)
+			.start();
+			DataOutputStream c = new DataOutputStream(p.getOutputStream());
+			c.writeChars(cmd + "\n");
+			BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
+			
+			String s = br.readLine();
+			
+			if (s == null)
+				s = "";
+			
+			if(p.waitFor() != 0) {
+				return null;
+			}
+			return s;
+		}
+		catch (Exception e) {
+			return null;
+		}
+	}	
 }
