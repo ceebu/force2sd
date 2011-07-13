@@ -398,7 +398,7 @@ public class Force2SD extends Activity {
     public void onCreateContextMenu(ContextMenu menu, View v, ContextMenuInfo menuInfo) {
     	super.onCreateContextMenu(menu, v, menuInfo);
 		menu.setHeaderTitle("Operations");
-		menu.add(0,MENU_MOVE,Menu.NONE,"Move");
+		menu.add(0,MENU_MOVE,Menu.NONE,v.getId() == R.id.movableApps0 ? "Move to SD" : "Move from SD");
 		menu.add(0,MENU_UNINSTALL,Menu.NONE,"Uninstall");
     }
     
