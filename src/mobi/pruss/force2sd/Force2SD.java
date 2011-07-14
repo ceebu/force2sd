@@ -10,6 +10,7 @@ import java.util.Locale;
 import mobi.pruss.force2sd.R;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.ProgressDialog;
 import android.appwidget.AppWidgetManager;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -544,20 +545,19 @@ class MyApplicationInfo extends ApplicationInfo {
 	}
 }
 
-class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
+class PopulateListTask extends AsyncTask<Void, Integer, List<MyApplicationInfo>> {
 	final PackageManager pm;
-	final Context	 context;
+	final Activity	 context;
 	final ListView listView;
-	final ProgressBar progress;
+	ProgressDialog progress;
 	final Spinner  spinner;
 	final int mode;
 	
-	PopulateListTask(Context c, PackageManager p, ListView l, int m) {
+	PopulateListTask(Activity c, PackageManager p, ListView l, int m) {
 		context = c;
 		pm		= p;
 		listView = l;
 		mode     = m;
-		progress = (ProgressBar)((Activity)c).findViewById(R.id.progress);
 		spinner = (Spinner)((Activity)c).findViewById(R.id.fromto);
 	}
 	
@@ -615,25 +615,45 @@ class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 		List<MyApplicationInfo> myList = new ArrayList<MyApplicationInfo>();
 		
 		MyCache cache = new MyCache(MyCache.genFilename(context, "app_labels"));
-		 
-		for (int i = 0 ; i < list.size() ; i++) {
-			if (movable(list.get(i), launchers, inputMethods)) {
-				MyApplicationInfo myAppInfo;
-				myAppInfo = new MyApplicationInfo(
-						cache, pm, list.get(i));
-				myList.add(myAppInfo);
+
+		for (int i = list.size()-1 ; i >= 0 ; i--) {
+			if (!movable(list.get(i), launchers, inputMethods)) {
+				list.remove(i);
 			}
+		}
+		
+		for (int i = 0 ; i < list.size() ; i++) {
+
+			publishProgress(i, list.size());
+			 
+			MyApplicationInfo myAppInfo;
+			myAppInfo = new MyApplicationInfo(
+						cache, pm, list.get(i));
+			myList.add(myAppInfo);
 		}
 		cache.commit();
 		
+		publishProgress(list.size(), list.size());
+
 		return myList;
 	}
 	
 	@Override
 	protected void onPreExecute() {
 		listView.setVisibility(View.GONE);
-		progress.setVisibility(View.VISIBLE);
 		spinner.setClickable(false);
+		progress = new ProgressDialog(context);
+		progress.setCancelable(false);
+		progress.setMessage("Getting applications...");
+		progress.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+		progress.setIndeterminate(true);
+		progress.show();
+	}
+	
+	protected void onProgressUpdate(Integer... p) {
+		progress.setIndeterminate(false);
+		progress.setMax(p[1]);
+		progress.setProgress(p[0]);
 	}
 	
 	@Override
@@ -665,7 +685,7 @@ class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 		
 		listView.setAdapter(appInfoAdapter);
 		((Force2SD)context).sortList(listView);		
-		progress.setVisibility(View.GONE);
+		progress.dismiss();
 		listView.setVisibility(View.VISIBLE);
 		spinner.setClickable(true);
 	}
@@ -673,7 +693,7 @@ class PopulateListTask extends AsyncTask<Void, Void, List<MyApplicationInfo>> {
 
 class MoveTask extends AsyncTask<String, Void, Boolean> {
 	final Context	 context;
-	final ProgressBar progress;
+	ProgressDialog progress;
 	final int    mode;
 	final String fname;
 	final int	  pos;
@@ -688,7 +708,6 @@ class MoveTask extends AsyncTask<String, Void, Boolean> {
 		pos		= p;
 		listView = l;
 		command	 = cmd;
-		progress = (ProgressBar)((Activity)c).findViewById(R.id.progress);
 		spinner = (Spinner)((Activity)c).findViewById(R.id.fromto);
 	}
 	
@@ -712,7 +731,21 @@ class MoveTask extends AsyncTask<String, Void, Boolean> {
 	
 	@Override
 	protected void onPreExecute() {
-		progress.setVisibility(View.VISIBLE);
+		String msg;
+		switch(command) {
+		case Force2SD.COMMAND_MOVE:
+			msg = "Moving...";
+			break;
+		case Force2SD.COMMAND_UNINSTALL:
+			msg = "Uninstalling...";
+			break;
+		default:
+			msg = "Please Wait...";
+			break;
+		}
+
+		progress = ProgressDialog.show(context, "", msg, true, false);
+		 
 		listView[mode].setVisibility(View.GONE);
 		spinner.setClickable(false);
 	}
@@ -731,7 +764,7 @@ class MoveTask extends AsyncTask<String, Void, Boolean> {
 			Toast.makeText(context, "Operation unsuccessful!", Toast.LENGTH_SHORT).show();
 		}
 		
-		progress.setVisibility(View.GONE);
+		progress.dismiss();
 		listView[mode].setVisibility(View.VISIBLE);
 		spinner.setClickable(true);
 		((Force2SD)context).updateTitle();

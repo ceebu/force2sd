@@ -36,10 +36,8 @@ public class Root {
 			rootCommands.close();
 			String line;
 			while((line=br.readLine())!=null) {
-				Log.v("Root", line);
 				if (line.trim().matches(successMarker)) {
 					br.close();
-					Log.v("Root", successMarker);
 					return true;
 				}
 			}
