@@ -67,8 +67,9 @@ public class Force2SD extends Activity {
     static final int SORT_INC_SIZE = 1;
     static final int SORT_DEC_SIZE = 2;
     static int limit;
-    static int count = 0;
+    public int count = 0;
     static boolean quickExit = false;
+    static final String MARKET = "Appstore";
     
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
@@ -131,7 +132,7 @@ public class Force2SD extends Activity {
 		
 		mode = pref.getInt("mode", 0);
 		sort = pref.getInt("sort", SORT_ALPHA);
-		count = pref.getInt("count", 0);
+		count = pref.getInt("count2", 0);
 		spinner.setSelection(mode);
 		viewListView();
 	}
@@ -171,20 +172,31 @@ public class Force2SD extends Activity {
         updateTitle();
 	}
 	
+	public void incCount() {
+		if (limit > 0) {
+			count++;
+			SharedPreferences pref = getPreferences(MODE_PRIVATE);
+			SharedPreferences.Editor ed = pref.edit();		
+			ed.putInt("count2", count);
+			ed.commit();
+		}
+	}
+	
 	private void doMove(int pos) {
-		if (mode == 0 && limit > 0) {
+        MyApplicationInfo appInfo = (MyApplicationInfo) listView[mode].getAdapter().getItem(pos);
+
+        if (!appInfo.getMovable()) {
+			Toast.makeText(this, "This is not movable", Toast.LENGTH_SHORT).show();
+			return;
+        }
+        
+        if (mode == 0 && limit > 0) {
 			if (count>=limit) {
 				pleaseBuy(true);
 				return;
 			}
-			count++;
-			SharedPreferences pref = getPreferences(MODE_PRIVATE);
-			SharedPreferences.Editor ed = pref.edit();		
-			ed.putInt("count", count);
-			ed.commit();
 		}
 		
-        MyApplicationInfo appInfo = (MyApplicationInfo) listView[mode].getAdapter().getItem(pos);
         String fname = appInfo.publicSourceDir;
         final String modes[] = {"s","f"};
         
@@ -211,6 +223,12 @@ public class Force2SD extends Activity {
         AlertDialog alertDialog = new AlertDialog.Builder(this).create();
         MyApplicationInfo appInfo = 
         	(MyApplicationInfo) listView[mode].getAdapter().getItem(pos);
+        
+        if (!appInfo.getMovable()) {
+			Toast.makeText(this, "This is not movable", Toast.LENGTH_SHORT).show();
+			return;
+        }        
+        
         String message;
         
         if (mode == 0 && isWidget(appInfo.packageName)) {
@@ -252,7 +270,7 @@ public class Force2SD extends Activity {
         alertDialog.setTitle(expired?"Lite version expired":"Lite version");
         
         alertDialog.setMessage("The lite version of Force 2SD only lets you "+
-        		"move three apps to SD or external storage, though it lets you "+
+        		"move five apps to SD or external storage, though it lets you "+
         		"move an unlimited number of apps back from SD.");
         
         alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, 
@@ -260,7 +278,11 @@ public class Force2SD extends Activity {
         	new DialogInterface.OnClickListener() {
             public void onClick(DialogInterface dialog, int which) {
             	Intent i = new Intent(Intent.ACTION_VIEW);
-            	i.setData(Uri.parse("market://details?id=mobi.pruss.force2sd"));
+            	if (MARKET.contains("arket"))
+            		i.setData(Uri.parse("market://details?id=mobi.pruss.force2sd"));
+            	else
+            		i.setData(Uri.parse("http://www.amazon.com/gp/mas/dl/android?p=mobi.pruss.force2sd"));
+            	i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             	startActivity(i);
             } });
         alertDialog.setButton(DialogInterface.BUTTON_NEGATIVE, 
@@ -275,7 +297,7 @@ public class Force2SD extends Activity {
         super.onCreate(savedInstanceState);
         
         if (getPackageName().contains("lite")) {
-        	limit = 3;
+        	limit = 5;
         }
         else {
         	limit = 0;
@@ -413,6 +435,9 @@ public class Force2SD extends Activity {
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
     	switch(item.getItemId()) {
+    	case R.id.please_buy:
+    		pleaseBuy(false);
+    		return true;
     	case R.id.sort_alpha:
     		setSort(SORT_ALPHA);
     		return true;
@@ -453,6 +478,9 @@ public class Force2SD extends Activity {
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
 		getMenuInflater().inflate(R.menu.main, menu);
+		if (!getPackageName().contains("lite")) {
+			menu.findItem(R.id.please_buy).setVisible(false);
+		}
 	    return true;
 	}
 }
@@ -491,6 +519,7 @@ class MyApplicationInfo extends ApplicationInfo {
 	private long size;
 	private String label;
 	private int versionCode;
+	private boolean movable;
 	
 	String getKey() {
 		return Locale.getDefault().toString() + ".v" + versionCode + "." + size + "." + packageName;
@@ -536,6 +565,14 @@ class MyApplicationInfo extends ApplicationInfo {
 		}
 	}
 	
+	public boolean getMovable() {
+		return movable;
+	}
+	
+	public void setMovable(boolean movable) {
+		this.movable = movable;
+	}
+	
 	public long getSize() {
 		return size;
 	}
@@ -574,8 +611,7 @@ class PopulateListTask extends AsyncTask<Void, Integer, List<MyApplicationInfo>>
 		return false;
 	}
 	
-	private boolean movable(ApplicationInfo a, List<ResolveInfo> match1,
-			List<InputMethodInfo> match2) {
+	private boolean onRightStorage(ApplicationInfo a) {
 		if (a.publicSourceDir == null ||
 				0 != (a.flags & MyApplicationInfo.FLAG_SYSTEM))
 			return false;
@@ -583,8 +619,13 @@ class PopulateListTask extends AsyncTask<Void, Integer, List<MyApplicationInfo>>
 		if (mode == 0 && 0 != (a.flags & MyApplicationInfo.FLAG_EXTERNAL_STORAGE))
 			return false;
 		if (mode == 1 && 0 == (a.flags & MyApplicationInfo.FLAG_EXTERNAL_STORAGE))
-			return false;
+			return false;	
 		
+		return true;
+	}
+	
+	private boolean movable(ApplicationInfo a, List<ResolveInfo> match1,
+			List<InputMethodInfo> match2) {
 		if (Force2SD.match(a.packageName, match1))
 			return false;
 		
@@ -617,18 +658,19 @@ class PopulateListTask extends AsyncTask<Void, Integer, List<MyApplicationInfo>>
 		MyCache cache = new MyCache(MyCache.genFilename(context, "app_labels"));
 
 		for (int i = list.size()-1 ; i >= 0 ; i--) {
-			if (!movable(list.get(i), launchers, inputMethods)) {
+			if (!onRightStorage(list.get(i))) {
 				list.remove(i);
 			}
 		}
 		
 		for (int i = 0 ; i < list.size() ; i++) {
-
 			publishProgress(i, list.size());
 			 
 			MyApplicationInfo myAppInfo;
+			ApplicationInfo app = list.get(i);
 			myAppInfo = new MyApplicationInfo(
-						cache, pm, list.get(i));
+						cache, pm, app);
+			myAppInfo.setMovable(movable(app, launchers, inputMethods));
 			myList.add(myAppInfo);
 		}
 		cache.commit();
@@ -673,11 +715,16 @@ class PopulateListTask extends AsyncTask<Void, Integer, List<MyApplicationInfo>>
 				else {
 					v = convertView;
 				}
-
+				
 				((TextView)v.findViewById(R.id.text1))
 					.setText(appInfo.get(position).getLabel());
+				
+				String sizeInfo = Force2SD.sizeText(appInfo.get(position).getSize());
+				if (!appInfo.get(position).getMovable())
+					sizeInfo += " [not movable]";
+				
 				((TextView)v.findViewById(R.id.text2))
-					.setText(Force2SD.sizeText(appInfo.get(position).getSize()));
+					.setText(sizeInfo);
 				((TextView)v.findViewById(R.id.text2)).setGravity(Gravity.RIGHT);
 				return v;
 			}				
@@ -752,13 +799,17 @@ class MoveTask extends AsyncTask<String, Void, Boolean> {
 	
 	@Override
 	protected void onPostExecute(Boolean success) {
-		if (success) {
+		if (success != null && success) {
 			@SuppressWarnings("unchecked")
 			ArrayAdapter<MyApplicationInfo> a = 
 				(ArrayAdapter<MyApplicationInfo>) listView[mode].getAdapter();
-			a.remove(a.getItem(pos));
+			if (a != null)
+				a.remove(a.getItem(pos));
 			listView[1-mode].setAdapter(null);
 			Toast.makeText(context, command==Force2SD.COMMAND_MOVE?"Moved!":"Uninstalled!", Toast.LENGTH_SHORT).show();
+			if (mode == 0 && command==Force2SD.COMMAND_MOVE) {
+				((Force2SD)context).incCount();
+			}
 		}
 		else {
 			Toast.makeText(context, "Operation unsuccessful!", Toast.LENGTH_SHORT).show();
