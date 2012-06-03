@@ -13,12 +13,14 @@
 	/>	    
 <ListView
 	android:id="@+id/movableApps0"
+	android:fastScrollEnabled="true"
 	android:layout_width="fill_parent"
 	android:layout_height="fill_parent"
 	android:visibility="gone"
 	/>
 <ListView
 	android:id="@+id/movableApps1"
+	android:fastScrollEnabled="true"
 	android:layout_width="fill_parent"
 	android:layout_height="fill_parent"
 	android:visibility="gone"

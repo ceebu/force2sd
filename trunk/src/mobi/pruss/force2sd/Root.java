@@ -32,10 +32,13 @@ public class Root {
 		try {
 			DataInputStream rootOutput = new DataInputStream(rootShell.getInputStream());
 			BufferedReader br = new BufferedReader(new InputStreamReader(rootOutput));
+			Log.v("Force2SD", "root execOne: "+s);
 			rootCommands.writeBytes(s + "\n");
 			rootCommands.close();
+			Log.v("Force2SD", "<");
 			String line;
 			while((line=br.readLine())!=null) {
+				Log.v("Force2SD", "root >"+ line);
 				if (line.trim().matches(successMarker)) {
 					br.close();
 					return true;
@@ -92,8 +95,10 @@ public class Root {
 	
 	public void exec( String s ) {
 		try {
+			Log.v("Force2SD", "root exec " + s);
 			rootCommands.writeBytes(s + "\n");
 			rootCommands.flush();
+			Log.v("Force2SD", "root exec <");
 		}
 		catch (Exception e) {
 			Log.e("Error executing",s);
@@ -106,6 +111,7 @@ public class Root {
 			.command("su")
 			.redirectErrorStream(true)
 			.start();
+			Log.v("Force2SD", "root execGetOneLine " + cmd);
 			DataOutputStream c = new DataOutputStream(p.getOutputStream());
 			c.writeChars(cmd + "\n");
 			BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
@@ -118,6 +124,7 @@ public class Root {
 			if(p.waitFor() != 0) {
 				return null;
 			}
+			Log.v("Force2SD", "root >" + s);
 			return s;
 		}
 		catch (Exception e) {
