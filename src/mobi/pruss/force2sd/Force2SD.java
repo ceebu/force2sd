@@ -198,6 +198,7 @@ public class Force2SD extends Activity {
 		}
 		
         String fname = appInfo.publicSourceDir;
+        Log.v("Force2SD", "public: "+appInfo.publicSourceDir+" private: "+appInfo.sourceDir);
         final String modes[] = {"s","f"};
         
         String options = "-"+modes[mode];
@@ -626,6 +627,9 @@ class PopulateListTask extends AsyncTask<Void, Integer, List<MyApplicationInfo>>
 	
 	private boolean movable(ApplicationInfo a, List<ResolveInfo> match1,
 			List<InputMethodInfo> match2) {
+		if (! a.sourceDir.equals(a.publicSourceDir)) 
+			return false;
+		
 		if (Force2SD.match(a.packageName, match1))
 			return false;
 		
@@ -719,9 +723,16 @@ class PopulateListTask extends AsyncTask<Void, Integer, List<MyApplicationInfo>>
 				((TextView)v.findViewById(R.id.text1))
 					.setText(appInfo.get(position).getLabel());
 				
-				String sizeInfo = Force2SD.sizeText(appInfo.get(position).getSize());
-				if (!appInfo.get(position).getMovable())
-					sizeInfo += " [not movable]";
+				MyApplicationInfo info = appInfo.get(position);
+				String sizeInfo = Force2SD.sizeText(info.getSize());
+				if (!info.getMovable()) {
+					if (info.sourceDir.equals(info.publicSourceDir)) {
+						sizeInfo += " [not movable]";
+					}
+					else {
+						sizeInfo += " [not movable due to DRM]";						
+					}
+				}
 				
 				((TextView)v.findViewById(R.id.text2))
 					.setText(sizeInfo);
@@ -764,7 +775,7 @@ class MoveTask extends AsyncTask<String, Void, Boolean> {
 		Boolean success = false;
 		switch(command) {
 		case Force2SD.COMMAND_MOVE:
-			success = root.execOne("pm install -r " + opt[0] + " \""+fname+"\"","Success.*");
+			success = root.execOne("killall -9 "+opt[0]+"; pm install -r " + opt[0] + " \""+fname+"\"","Success.*");
 			break;
 		case Force2SD.COMMAND_UNINSTALL:
 			success = root.execOne("pm uninstall "+fname,"Success.*");

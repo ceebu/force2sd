@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 	<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-      android:versionCode="112"
-      android:versionName="1.11" package="mobi.pruss.force2sd"
+      android:versionCode="113"
+      android:versionName="1.12" package="mobi.pruss.force2sd"
       >
 
     <application android:label="Force2SD" android:icon="@drawable/icon">
