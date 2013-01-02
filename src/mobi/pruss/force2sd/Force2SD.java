@@ -198,7 +198,7 @@ public class Force2SD extends Activity {
 		}
 		
         String fname = appInfo.publicSourceDir;
-        Log.v("Force2SD", "public: "+appInfo.publicSourceDir+" private: "+appInfo.sourceDir);
+        Log.v("Force2SD", "flags: "+appInfo.flags);
         final String modes[] = {"s","f"};
         
         String options = "-"+modes[mode];
@@ -209,7 +209,10 @@ public class Force2SD extends Activity {
         	options = options + " -i \"" + installer + "\"";
         }
 
-        new MoveTask(this, listView, mode, fname, pos, COMMAND_MOVE).execute(options);
+        new MoveTask(this, listView, mode, fname, pos, COMMAND_MOVE).execute(
+        		appInfo.packageName,
+        		options
+        		);
 		
 	}
 	
@@ -217,7 +220,9 @@ public class Force2SD extends Activity {
         MyApplicationInfo appInfo = (MyApplicationInfo) listView[mode].getAdapter().getItem(pos);
         String fname = appInfo.packageName;      
 		
-		new MoveTask(this, listView, mode, fname, pos, COMMAND_UNINSTALL).execute();		
+		new MoveTask(this, listView, mode, fname, pos, COMMAND_UNINSTALL).execute(
+				appInfo.packageName
+		);		
 	}
 	
 	private void move(final int pos) {
@@ -775,10 +780,10 @@ class MoveTask extends AsyncTask<String, Void, Boolean> {
 		Boolean success = false;
 		switch(command) {
 		case Force2SD.COMMAND_MOVE:
-			success = root.execOne("killall -9 "+opt[0]+"; pm install -r " + opt[0] + " \""+fname+"\"","Success.*");
+			success = root.execOne("killall -9 "+opt[0]+"; pm install -r " + opt[1] + " \""+fname+"\"","Success.*");
 			break;
 		case Force2SD.COMMAND_UNINSTALL:
-			success = root.execOne("pm uninstall "+fname,"Success.*");
+			success = root.execOne("killall -9 "+opt[0]+"; pm uninstall "+fname,"Success.*");
 			break;
 		default:
 			break;
