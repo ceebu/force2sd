@@ -66,10 +66,17 @@ public class Force2SD extends Activity {
     static final int SORT_ALPHA = 0;
     static final int SORT_INC_SIZE = 1;
     static final int SORT_DEC_SIZE = 2;
-    static int limit;
+	protected static final int METHOD_DEFAULT = 0;
+	protected static final int METHOD_ALTERNATE = 1;
+
+	static int limit;
     public int count = 0;
     static boolean quickExit = false;
-    static final String MARKET = "Appstore";
+	private int method = METHOD_DEFAULT;
+	
+	public class a {
+		
+	}
     
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
@@ -110,6 +117,24 @@ public class Force2SD extends Activity {
     	listView[mode].setVisibility(View.VISIBLE);
     }
     
+	private void setMoveMethod() {
+		AlertDialog.Builder builder = new AlertDialog.Builder(this);
+		builder.setTitle("Set move method");
+		String[] methods = { "Default", "Experimental" };
+		builder.setSingleChoiceItems(methods, method, 
+				new DialogInterface.OnClickListener() {
+					
+					@Override
+					public void onClick(DialogInterface dialog, int which) {
+						method = which;
+						savePrefs();
+						dialog.dismiss();
+					}
+				});
+    
+		builder.create().show();
+	}
+	
 	private void fatalError(int title, int msg) {
 		quickExit = true;
         AlertDialog alertDialog = new AlertDialog.Builder(this).create();
@@ -133,6 +158,7 @@ public class Force2SD extends Activity {
 		mode = pref.getInt("mode", 0);
 		sort = pref.getInt("sort", SORT_ALPHA);
 		count = pref.getInt("count2", 0);
+		method = pref.getInt("method", METHOD_DEFAULT);
 		spinner.setSelection(mode);
 		viewListView();
 	}
@@ -143,6 +169,7 @@ public class Force2SD extends Activity {
 		
 		ed.putInt("mode", mode);
 		ed.putInt("sort", sort);
+		ed.putInt("method", method);
 		ed.commit();
 	}
 	
@@ -209,18 +236,18 @@ public class Force2SD extends Activity {
         	options = options + " -i \"" + installer + "\"";
         }
 
-        new MoveTask(this, listView, mode, fname, pos, COMMAND_MOVE).execute(
+        new MoveTask(this, listView, mode, fname, pos, COMMAND_MOVE, method).execute(
         		appInfo.packageName,
-        		options
-        		);
-		
+        		modes[mode],
+        		installer
+        		);		
 	}
 	
 	private void doUninstall(int pos) {
         MyApplicationInfo appInfo = (MyApplicationInfo) listView[mode].getAdapter().getItem(pos);
         String fname = appInfo.packageName;      
 		
-		new MoveTask(this, listView, mode, fname, pos, COMMAND_UNINSTALL).execute(
+		new MoveTask(this, listView, mode, fname, pos, COMMAND_UNINSTALL, method).execute(
 				appInfo.packageName
 		);		
 	}
@@ -270,6 +297,24 @@ public class Force2SD extends Activity {
         alertDialog.show();		
 	}
 	
+	public void showUpdates() {		
+        AlertDialog alertDialog = new AlertDialog.Builder(this).create();
+
+        alertDialog.setTitle("Force2SD Updates");
+        
+        alertDialog.setMessage(
+        		"1.20:\n"+
+        		"- New, probably better, but still experimental move method (to activate "+
+        			"press MENU, Set Move Method...)\n");
+        
+        alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, 
+        		"OK", 
+        	new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int which) {
+            } });
+        alertDialog.show();				
+	}	
+	
 	private void pleaseBuy(boolean expired) {
         AlertDialog alertDialog = new AlertDialog.Builder(this).create();
 
@@ -283,13 +328,7 @@ public class Force2SD extends Activity {
         		"Get full version", 
         	new DialogInterface.OnClickListener() {
             public void onClick(DialogInterface dialog, int which) {
-            	Intent i = new Intent(Intent.ACTION_VIEW);
-            	if (MARKET.contains("arket"))
-            		i.setData(Uri.parse("market://details?id=mobi.pruss.force2sd"));
-            	else
-            		i.setData(Uri.parse("http://www.amazon.com/gp/mas/dl/android?p=mobi.pruss.force2sd"));
-            	i.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            	startActivity(i);
+            	MarketDetector.launch(Force2SD.this);
             } });
         alertDialog.setButton(DialogInterface.BUTTON_NEGATIVE, 
         		"Not yet", 
@@ -297,6 +336,20 @@ public class Force2SD extends Activity {
             public void onClick(DialogInterface dialog, int which) {} });
         alertDialog.show();		
 	}
+	
+	private int getVersion() {
+		int v;
+		try {
+			v = getPackageManager()
+				.getPackageInfo(getPackageName(),0).versionCode;
+		} catch (NameNotFoundException e) {
+			v = 0;
+		}
+		
+		return v;
+	}
+
+
 	
 	@Override
     public void onCreate(Bundle savedInstanceState) {
@@ -364,6 +417,11 @@ public class Force2SD extends Activity {
         spinner.setOnItemSelectedListener(spinListen);
         if (limit>0)
         	pleaseBuy(count >= limit);
+        
+        if (getVersion() != getPreferences(MODE_PRIVATE).getInt("updateVersion", 0)) {
+        	getPreferences(MODE_PRIVATE).edit().putInt("updateVersion", getVersion()).commit();
+        	showUpdates();
+        }        
     }
 	
 	static public String sizeText(long size) {
@@ -453,6 +511,9 @@ public class Force2SD extends Activity {
     	case R.id.sort_dec_size:
     		setSort(SORT_DEC_SIZE);
     		return true;
+    	case R.id.move_method:
+    		setMoveMethod();
+    		return true;
     	default:
     		return false;
     	}
@@ -488,6 +549,274 @@ public class Force2SD extends Activity {
 			menu.findItem(R.id.please_buy).setVisible(false);
 		}
 	    return true;
+	}
+
+	public class PopulateListTask extends AsyncTask<Void, Integer, List<MyApplicationInfo>> {
+		final PackageManager pm;
+		final Activity	 context;
+		final ListView listView;
+		ProgressDialog progress;
+		final Spinner  spinner;
+		final int mode;
+		
+		PopulateListTask(Activity c, PackageManager p, ListView l, int m) {
+			context = c;
+			pm		= p;
+			listView = l;
+			mode     = m;
+			spinner = (Spinner)((Activity)c).findViewById(R.id.fromto);
+		}
+		
+		public boolean matchIM(String p, List<InputMethodInfo> m) {
+			if (m==null)
+				return false;
+			
+			int length = m.size();
+			
+			for (int i=0; i<length; i++)
+				if (p.equals(m.get(i).getPackageName()))
+					return true;
+			
+			return false;
+		}
+		
+		private boolean onRightStorage(ApplicationInfo a) {
+			if (a.publicSourceDir == null ||
+					0 != (a.flags & MyApplicationInfo.FLAG_SYSTEM))
+				return false;
+			
+			if (mode == 0 && 0 != (a.flags & MyApplicationInfo.FLAG_EXTERNAL_STORAGE))
+				return false;
+			if (mode == 1 && 0 == (a.flags & MyApplicationInfo.FLAG_EXTERNAL_STORAGE))
+				return false;	
+			
+			return true;
+		}
+		
+		private boolean movable(ApplicationInfo a, List<ResolveInfo> match1,
+				List<InputMethodInfo> match2) {
+			if (! a.sourceDir.equals(a.publicSourceDir)) 
+				return false;
+			
+			if (Force2SD.match(a.packageName, match1))
+				return false;
+			
+			if (matchIM(a.packageName, match2))
+				return false;
+			
+			return true;
+		}
+
+		@Override
+		protected List<MyApplicationInfo> doInBackground(Void... c) {
+			List<ApplicationInfo> list = 
+				pm.getInstalledApplications(0);
+			
+			List<ResolveInfo> launchers = null;
+			List<InputMethodInfo> inputMethods = null;
+			
+			if (mode == 0) {
+				Intent i = new Intent(); 
+		        i.setAction(Intent.ACTION_MAIN); 
+		        i.addCategory(Intent.CATEGORY_HOME);
+		        launchers = pm.queryIntentActivities(i, 0);
+		        
+		        InputMethodManager mgr = (InputMethodManager)context.getSystemService(Context.INPUT_METHOD_SERVICE);
+		        inputMethods = mgr.getInputMethodList();
+			}
+			
+			List<MyApplicationInfo> myList = new ArrayList<MyApplicationInfo>();
+			
+			MyCache cache = new MyCache(MyCache.genFilename(context, "app_labels"));
+
+			for (int i = list.size()-1 ; i >= 0 ; i--) {
+				if (!onRightStorage(list.get(i))) {
+					list.remove(i);
+				}
+			}
+			
+			for (int i = 0 ; i < list.size() ; i++) {
+				publishProgress(i, list.size());
+				 
+				MyApplicationInfo myAppInfo;
+				ApplicationInfo app = list.get(i);
+				myAppInfo = new MyApplicationInfo(
+							cache, pm, app);
+				myAppInfo.setMovable(movable(app, launchers, inputMethods));
+				myList.add(myAppInfo);
+			}
+			cache.commit();
+			
+			publishProgress(list.size(), list.size());
+
+			return myList;
+		}
+		
+		@Override
+		protected void onPreExecute() {
+			listView.setVisibility(View.GONE);
+			spinner.setClickable(false);
+			progress = new ProgressDialog(context);
+			progress.setCancelable(false);
+			progress.setMessage("Getting applications...");
+			progress.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+			progress.setIndeterminate(true);
+			progress.show();
+		}
+		
+		protected void onProgressUpdate(Integer... p) {
+			progress.setIndeterminate(false);
+			progress.setMax(p[1]);
+			progress.setProgress(p[0]);
+		}
+		
+		@Override
+		protected void onPostExecute(final List<MyApplicationInfo> appInfo) {
+			
+			ArrayAdapter<MyApplicationInfo> appInfoAdapter = 
+				new ArrayAdapter<MyApplicationInfo>(context, 
+						R.layout.twoline, 
+						appInfo) {
+
+				public View getView(int position, View convertView, ViewGroup parent) {
+					View v;				
+					
+					if (convertView == null) {
+		                v = View.inflate(context, R.layout.twoline, null);
+		            }
+					else {
+						v = convertView;
+					}
+					
+					((TextView)v.findViewById(R.id.text1))
+						.setText(appInfo.get(position).getLabel());
+					
+					MyApplicationInfo info = appInfo.get(position);
+					String sizeInfo = Force2SD.sizeText(info.getSize());
+					if (!info.getMovable()) {
+						if (info.sourceDir.equals(info.publicSourceDir)) {
+							sizeInfo += " [not movable]";
+						}
+						else {
+							sizeInfo += " [not movable due to DRM]";						
+						}
+					}
+					
+					((TextView)v.findViewById(R.id.text2))
+						.setText(sizeInfo);
+					((TextView)v.findViewById(R.id.text2)).setGravity(Gravity.RIGHT);
+					return v;
+				}				
+			};
+			
+			listView.setAdapter(appInfoAdapter);
+			((Force2SD)context).sortList(listView);		
+			progress.dismiss();
+			listView.setVisibility(View.VISIBLE);
+			spinner.setClickable(true);
+		}
+	}
+
+	class MoveTask extends AsyncTask<String, Void, Boolean> {
+		final Context	 context;
+		ProgressDialog progress;
+		final int    mode;
+		final String fname;
+		final int	  pos;
+		final ListView[] listView;
+		final Spinner  spinner;
+		final int	command;
+		final int method;
+		
+		MoveTask(Context c, ListView[] l, int m, String f, int p, int cmd, int method) {
+			context = c;
+			mode	= m;
+			fname	= f;
+			pos		= p;
+			listView = l;
+			command	 = cmd;
+			this.method = method;
+			spinner = (Spinner)((Activity)c).findViewById(R.id.fromto);
+		}
+		
+		@Override
+		protected Boolean doInBackground(String... opt) {
+			Root root = new Root();
+			root.exec("export LD_LIBRARY_PATH=/vendor/lib:/system/lib");
+			Boolean success = false;
+			switch(command) {
+			case Force2SD.COMMAND_MOVE:
+				String moveCommand;
+				
+				switch(method) {
+				case Force2SD.METHOD_ALTERNATE:
+					moveCommand = "CLASSPATH=\""+context.getPackageCodePath()+"\" app_process . "+Mover.class.getName()+
+						" move "+opt[0]+" "+(opt[1].equals("f") ? 0 : 2);
+					break;
+				default:
+					moveCommand = "pm install -r "+"-"+opt[1];
+					if (opt[2] != null && opt[2].length()>0) 
+						moveCommand += " -i \"" + opt[2] + "\"";
+					moveCommand += " \""+fname+"\"";
+					break;
+				}
+				
+				success = root.execOne("killall -9 "+opt[0]+"; "+moveCommand,"Success.*");
+				break;
+			case Force2SD.COMMAND_UNINSTALL:
+				success = root.execOne("killall -9 "+opt[0]+"; pm uninstall "+fname,"Success.*");
+				break;
+			default:
+				break;
+			}
+			root.close();
+			return success;
+		}
+		
+		@Override
+		protected void onPreExecute() {
+			String msg;
+			switch(command) {
+			case Force2SD.COMMAND_MOVE:
+				msg = "Moving...";
+				break;
+			case Force2SD.COMMAND_UNINSTALL:
+				msg = "Uninstalling...";
+				break;
+			default:
+				msg = "Please Wait...";
+				break;
+			}
+
+			progress = ProgressDialog.show(context, "", msg, true, false);
+			 
+			listView[mode].setVisibility(View.GONE);
+			spinner.setClickable(false);
+		}
+		
+		@Override
+		protected void onPostExecute(Boolean success) {
+			if (success != null && success) {
+				@SuppressWarnings("unchecked")
+				ArrayAdapter<MyApplicationInfo> a = 
+					(ArrayAdapter<MyApplicationInfo>) listView[mode].getAdapter();
+				if (a != null)
+					a.remove(a.getItem(pos));
+				listView[1-mode].setAdapter(null);
+				Toast.makeText(context, command==Force2SD.COMMAND_MOVE?"Moved!":"Uninstalled!", Toast.LENGTH_SHORT).show();
+				if (mode == 0 && command==Force2SD.COMMAND_MOVE) {
+					((Force2SD)context).incCount();
+				}
+			}
+			else {
+				Toast.makeText(context, "Didn't work, maybe try another method?", Toast.LENGTH_LONG).show();
+			}
+			
+			progress.dismiss();
+			listView[mode].setVisibility(View.VISIBLE);
+			spinner.setClickable(true);
+			((Force2SD)context).updateTitle();
+		}
 	}
 }
 
@@ -585,255 +914,5 @@ class MyApplicationInfo extends ApplicationInfo {
 
 	public String getLabel() {
 		return label;
-	}
-}
-
-class PopulateListTask extends AsyncTask<Void, Integer, List<MyApplicationInfo>> {
-	final PackageManager pm;
-	final Activity	 context;
-	final ListView listView;
-	ProgressDialog progress;
-	final Spinner  spinner;
-	final int mode;
-	
-	PopulateListTask(Activity c, PackageManager p, ListView l, int m) {
-		context = c;
-		pm		= p;
-		listView = l;
-		mode     = m;
-		spinner = (Spinner)((Activity)c).findViewById(R.id.fromto);
-	}
-	
-	public boolean matchIM(String p, List<InputMethodInfo> m) {
-		if (m==null)
-			return false;
-		
-		int length = m.size();
-		
-		for (int i=0; i<length; i++)
-			if (p.equals(m.get(i).getPackageName()))
-				return true;
-		
-		return false;
-	}
-	
-	private boolean onRightStorage(ApplicationInfo a) {
-		if (a.publicSourceDir == null ||
-				0 != (a.flags & MyApplicationInfo.FLAG_SYSTEM))
-			return false;
-		
-		if (mode == 0 && 0 != (a.flags & MyApplicationInfo.FLAG_EXTERNAL_STORAGE))
-			return false;
-		if (mode == 1 && 0 == (a.flags & MyApplicationInfo.FLAG_EXTERNAL_STORAGE))
-			return false;	
-		
-		return true;
-	}
-	
-	private boolean movable(ApplicationInfo a, List<ResolveInfo> match1,
-			List<InputMethodInfo> match2) {
-		if (! a.sourceDir.equals(a.publicSourceDir)) 
-			return false;
-		
-		if (Force2SD.match(a.packageName, match1))
-			return false;
-		
-		if (matchIM(a.packageName, match2))
-			return false;
-		
-		return true;
-	}
-
-	@Override
-	protected List<MyApplicationInfo> doInBackground(Void... c) {
-		List<ApplicationInfo> list = 
-			pm.getInstalledApplications(0);
-		
-		List<ResolveInfo> launchers = null;
-		List<InputMethodInfo> inputMethods = null;
-		
-		if (mode == 0) {
-			Intent i = new Intent(); 
-	        i.setAction(Intent.ACTION_MAIN); 
-	        i.addCategory(Intent.CATEGORY_HOME);
-	        launchers = pm.queryIntentActivities(i, 0);
-	        
-	        InputMethodManager mgr = (InputMethodManager)context.getSystemService(Context.INPUT_METHOD_SERVICE);
-	        inputMethods = mgr.getInputMethodList();
-		}
-		
-		List<MyApplicationInfo> myList = new ArrayList<MyApplicationInfo>();
-		
-		MyCache cache = new MyCache(MyCache.genFilename(context, "app_labels"));
-
-		for (int i = list.size()-1 ; i >= 0 ; i--) {
-			if (!onRightStorage(list.get(i))) {
-				list.remove(i);
-			}
-		}
-		
-		for (int i = 0 ; i < list.size() ; i++) {
-			publishProgress(i, list.size());
-			 
-			MyApplicationInfo myAppInfo;
-			ApplicationInfo app = list.get(i);
-			myAppInfo = new MyApplicationInfo(
-						cache, pm, app);
-			myAppInfo.setMovable(movable(app, launchers, inputMethods));
-			myList.add(myAppInfo);
-		}
-		cache.commit();
-		
-		publishProgress(list.size(), list.size());
-
-		return myList;
-	}
-	
-	@Override
-	protected void onPreExecute() {
-		listView.setVisibility(View.GONE);
-		spinner.setClickable(false);
-		progress = new ProgressDialog(context);
-		progress.setCancelable(false);
-		progress.setMessage("Getting applications...");
-		progress.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
-		progress.setIndeterminate(true);
-		progress.show();
-	}
-	
-	protected void onProgressUpdate(Integer... p) {
-		progress.setIndeterminate(false);
-		progress.setMax(p[1]);
-		progress.setProgress(p[0]);
-	}
-	
-	@Override
-	protected void onPostExecute(final List<MyApplicationInfo> appInfo) {
-		
-		ArrayAdapter<MyApplicationInfo> appInfoAdapter = 
-			new ArrayAdapter<MyApplicationInfo>(context, 
-					R.layout.twoline, 
-					appInfo) {
-
-			public View getView(int position, View convertView, ViewGroup parent) {
-				View v;				
-				
-				if (convertView == null) {
-	                v = View.inflate(context, R.layout.twoline, null);
-	            }
-				else {
-					v = convertView;
-				}
-				
-				((TextView)v.findViewById(R.id.text1))
-					.setText(appInfo.get(position).getLabel());
-				
-				MyApplicationInfo info = appInfo.get(position);
-				String sizeInfo = Force2SD.sizeText(info.getSize());
-				if (!info.getMovable()) {
-					if (info.sourceDir.equals(info.publicSourceDir)) {
-						sizeInfo += " [not movable]";
-					}
-					else {
-						sizeInfo += " [not movable due to DRM]";						
-					}
-				}
-				
-				((TextView)v.findViewById(R.id.text2))
-					.setText(sizeInfo);
-				((TextView)v.findViewById(R.id.text2)).setGravity(Gravity.RIGHT);
-				return v;
-			}				
-		};
-		
-		listView.setAdapter(appInfoAdapter);
-		((Force2SD)context).sortList(listView);		
-		progress.dismiss();
-		listView.setVisibility(View.VISIBLE);
-		spinner.setClickable(true);
-	}
-}
-
-class MoveTask extends AsyncTask<String, Void, Boolean> {
-	final Context	 context;
-	ProgressDialog progress;
-	final int    mode;
-	final String fname;
-	final int	  pos;
-	final ListView[] listView;
-	final Spinner  spinner;
-	final int	command;
-	
-	MoveTask(Context c, ListView[] l, int m, String f, int p, int cmd) {
-		context = c;
-		mode	= m;
-		fname	= f;
-		pos		= p;
-		listView = l;
-		command	 = cmd;
-		spinner = (Spinner)((Activity)c).findViewById(R.id.fromto);
-	}
-	
-	@Override
-	protected Boolean doInBackground(String... opt) {
-		Root root = new Root();
-		Boolean success = false;
-		switch(command) {
-		case Force2SD.COMMAND_MOVE:
-			success = root.execOne("killall -9 "+opt[0]+"; pm install -r " + opt[1] + " \""+fname+"\"","Success.*");
-			break;
-		case Force2SD.COMMAND_UNINSTALL:
-			success = root.execOne("killall -9 "+opt[0]+"; pm uninstall "+fname,"Success.*");
-			break;
-		default:
-			break;
-		}
-		root.close();
-		return success;
-	}
-	
-	@Override
-	protected void onPreExecute() {
-		String msg;
-		switch(command) {
-		case Force2SD.COMMAND_MOVE:
-			msg = "Moving...";
-			break;
-		case Force2SD.COMMAND_UNINSTALL:
-			msg = "Uninstalling...";
-			break;
-		default:
-			msg = "Please Wait...";
-			break;
-		}
-
-		progress = ProgressDialog.show(context, "", msg, true, false);
-		 
-		listView[mode].setVisibility(View.GONE);
-		spinner.setClickable(false);
-	}
-	
-	@Override
-	protected void onPostExecute(Boolean success) {
-		if (success != null && success) {
-			@SuppressWarnings("unchecked")
-			ArrayAdapter<MyApplicationInfo> a = 
-				(ArrayAdapter<MyApplicationInfo>) listView[mode].getAdapter();
-			if (a != null)
-				a.remove(a.getItem(pos));
-			listView[1-mode].setAdapter(null);
-			Toast.makeText(context, command==Force2SD.COMMAND_MOVE?"Moved!":"Uninstalled!", Toast.LENGTH_SHORT).show();
-			if (mode == 0 && command==Force2SD.COMMAND_MOVE) {
-				((Force2SD)context).incCount();
-			}
-		}
-		else {
-			Toast.makeText(context, "Operation unsuccessful!", Toast.LENGTH_SHORT).show();
-		}
-		
-		progress.dismiss();
-		listView[mode].setVisibility(View.VISIBLE);
-		spinner.setClickable(true);
-		((Force2SD)context).updateTitle();
 	}
 }
