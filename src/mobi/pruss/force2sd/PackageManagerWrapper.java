@@ -51,6 +51,7 @@ public class PackageManagerWrapper {
 
 			MyPackageMoveObserver observer = new MyPackageMoveObserver(); 
 
+			System.out.println("Moving "+packageName+" to "+dest);
 			movePackage.invoke(iPackageManager, packageName, observer, dest);
 			
 			synchronized(observer) {
@@ -64,10 +65,10 @@ public class PackageManagerWrapper {
 					}
 				}
 				if (observer.returnCode == MOVE_SUCCEEDED) {
-					System.out.println("SUCCESS");
+					System.out.println("Success: Moved "+packageName+" to "+dest);
 				}
 				else {
-					System.out.println("Failure: "+observer.returnCode);
+					System.out.println("Failure: Error "+observer.returnCode);
 					return;
 				}
 			}

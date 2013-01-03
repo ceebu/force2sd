@@ -2,8 +2,6 @@ package mobi.pruss.force2sd;
 
 public final class Mover {
 	public static void main(String[] args) {
-		System.out.println("Hello");
-		
 		if (args.length < 1) {
 			System.out.println("Error: No arguments");
 			return;
