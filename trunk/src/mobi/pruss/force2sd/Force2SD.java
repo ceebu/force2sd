@@ -596,7 +596,7 @@ public class Force2SD extends Activity {
 		private boolean movable(ApplicationInfo a, List<ResolveInfo> match1,
 				List<InputMethodInfo> match2) {
 			if (! a.sourceDir.equals(a.publicSourceDir)) 
-				return false;
+				return false; // forward locked
 			
 			if (Force2SD.match(a.packageName, match1))
 				return false;
@@ -751,7 +751,7 @@ public class Force2SD extends Activity {
 				switch(method) {
 				case Force2SD.METHOD_ALTERNATE:
 					moveCommand = "CLASSPATH=\""+context.getPackageCodePath()+"\" app_process . "+Mover.class.getName()+
-						" move "+opt[0]+" "+(opt[1].equals("f") ? 0 : 2);
+						" move "+opt[0]+" "+(opt[1].equals("f") ? 1 : 2);
 					break;
 				default:
 					moveCommand = "pm install -r "+"-"+opt[1];
