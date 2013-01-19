@@ -305,7 +305,7 @@ public class Force2SD extends Activity {
         alertDialog.setMessage(
         		"1.20:\n"+
         		"- New, probably better, move method (if it doesn't work for you, "+
-        			"press MENU, Set Move Method, and Old...)\n");
+        			"press MENU, Set Move Method, and Classic...)\n");
         
         alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, 
         		"OK", 
