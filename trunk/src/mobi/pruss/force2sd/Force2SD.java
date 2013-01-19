@@ -66,13 +66,13 @@ public class Force2SD extends Activity {
     static final int SORT_ALPHA = 0;
     static final int SORT_INC_SIZE = 1;
     static final int SORT_DEC_SIZE = 2;
-	protected static final int METHOD_DEFAULT = 0;
-	protected static final int METHOD_ALTERNATE = 1;
+	protected static final int METHOD_OLD = 0;
+	protected static final int METHOD_NEW = 1;
 
 	static int limit;
     public int count = 0;
     static boolean quickExit = false;
-	private int method = METHOD_DEFAULT;
+	private int method = METHOD_NEW;
 	
 	public class a {
 		
@@ -120,7 +120,7 @@ public class Force2SD extends Activity {
 	private void setMoveMethod() {
 		AlertDialog.Builder builder = new AlertDialog.Builder(this);
 		builder.setTitle("Set move method");
-		String[] methods = { "Default", "Experimental" };
+		String[] methods = { "Classic", "New" };
 		builder.setSingleChoiceItems(methods, method, 
 				new DialogInterface.OnClickListener() {
 					
@@ -158,7 +158,7 @@ public class Force2SD extends Activity {
 		mode = pref.getInt("mode", 0);
 		sort = pref.getInt("sort", SORT_ALPHA);
 		count = pref.getInt("count2", 0);
-		method = pref.getInt("method", METHOD_DEFAULT);
+		method = pref.getInt("method", METHOD_NEW);
 		spinner.setSelection(mode);
 		viewListView();
 	}
@@ -304,8 +304,8 @@ public class Force2SD extends Activity {
         
         alertDialog.setMessage(
         		"1.20:\n"+
-        		"- New, probably better, but still experimental move method (to activate "+
-        			"press MENU, Set Move Method...)\n");
+        		"- New, probably better, move method (if it doesn't work for you, "+
+        			"press MENU, Set Move Method, and Old...)\n");
         
         alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, 
         		"OK", 
@@ -749,7 +749,7 @@ public class Force2SD extends Activity {
 				String moveCommand;
 				
 				switch(method) {
-				case Force2SD.METHOD_ALTERNATE:
+				case Force2SD.METHOD_NEW:
 					moveCommand = "CLASSPATH=\""+context.getPackageCodePath()+"\" app_process . "+Mover.class.getName()+
 						" move "+opt[0]+" "+(opt[1].equals("f") ? 1 : 2);
 					break;
