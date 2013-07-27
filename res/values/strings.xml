@@ -21,9 +21,16 @@
     <string name="ok">OK</string>
 	<string name="yes">Yes</string>
 	<string name="no">No</string>
-    <string name="planet_prompt">Choose a planet</string>
     <string-array name="fromto_options">
         <item>Move to SD</item>
         <item>Move from SD</item>
+    </string-array>
+    <string-array name="method_labels">
+        <item>Classic method</item>
+        <item>New method</item>
+    </string-array>
+    <string-array name="methods">
+        <item>0</item>
+        <item>1</item>
     </string-array>
 </resources>

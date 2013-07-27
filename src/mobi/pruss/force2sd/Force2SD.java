@@ -29,6 +29,7 @@ import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.StatFs;
+import android.preference.PreferenceManager;
 import android.text.Layout;
 import android.util.Log;
 import android.view.inputmethod.InputMethodInfo;
@@ -66,18 +67,12 @@ public class Force2SD extends Activity {
     static final int SORT_ALPHA = 0;
     static final int SORT_INC_SIZE = 1;
     static final int SORT_DEC_SIZE = 2;
-	protected static final int METHOD_OLD = 0;
-	protected static final int METHOD_NEW = 1;
+	SharedPreferences options;
 
 	static int limit;
     public int count = 0;
     static boolean quickExit = false;
-	private int method = METHOD_NEW;
 	
-	public class a {
-		
-	}
-    
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
@@ -117,24 +112,6 @@ public class Force2SD extends Activity {
     	listView[mode].setVisibility(View.VISIBLE);
     }
     
-	private void setMoveMethod() {
-		AlertDialog.Builder builder = new AlertDialog.Builder(this);
-		builder.setTitle("Set move method");
-		String[] methods = { "Classic", "New" };
-		builder.setSingleChoiceItems(methods, method, 
-				new DialogInterface.OnClickListener() {
-					
-					@Override
-					public void onClick(DialogInterface dialog, int which) {
-						method = which;
-						savePrefs();
-						dialog.dismiss();
-					}
-				});
-    
-		builder.create().show();
-	}
-	
 	private void fatalError(int title, int msg) {
 		quickExit = true;
         AlertDialog alertDialog = new AlertDialog.Builder(this).create();
@@ -153,23 +130,18 @@ public class Force2SD extends Activity {
 	}
 	
 	private void loadPrefs() {
-		SharedPreferences pref = getPreferences(MODE_PRIVATE);
-		
-		mode = pref.getInt("mode", 0);
-		sort = pref.getInt("sort", SORT_ALPHA);
-		count = pref.getInt("count2", 0);
-		method = pref.getInt("method", METHOD_NEW);
+		mode = options.getInt("mode", 0);
+		sort = options.getInt("sort", SORT_ALPHA);
+		count = options.getInt("count3", 0);
 		spinner.setSelection(mode);
 		viewListView();
 	}
 	
 	private void savePrefs() {
-		SharedPreferences pref = getPreferences(MODE_PRIVATE);
-		SharedPreferences.Editor ed = pref.edit();		
+		SharedPreferences.Editor ed = options.edit();		
 		
 		ed.putInt("mode", mode);
 		ed.putInt("sort", sort);
-		ed.putInt("method", method);
 		ed.commit();
 	}
 	
@@ -202,9 +174,9 @@ public class Force2SD extends Activity {
 	public void incCount() {
 		if (limit > 0) {
 			count++;
-			SharedPreferences pref = getPreferences(MODE_PRIVATE);
+			SharedPreferences pref = PreferenceManager.getDefaultSharedPreferences(this);
 			SharedPreferences.Editor ed = pref.edit();		
-			ed.putInt("count2", count);
+			ed.putInt("count3", count);
 			ed.commit();
 		}
 	}
@@ -228,15 +200,16 @@ public class Force2SD extends Activity {
         Log.v("Force2SD", "flags: "+appInfo.flags);
         final String modes[] = {"s","f"};
         
-        String options = "-"+modes[mode];
+        String commandOptions = "-"+modes[mode];
         
         String installer = pm.getInstallerPackageName(appInfo.packageName);
         
         if (installer != null && installer.length()>0) {
-        	options = options + " -i \"" + installer + "\"";
+        	commandOptions = commandOptions + " -i \"" + installer + "\"";
         }
 
-        new MoveTask(this, listView, mode, fname, pos, COMMAND_MOVE, method).execute(
+        new MoveTask(this, listView, mode, fname, pos, COMMAND_MOVE, 
+        		Options.getMethod(options)).execute(
         		appInfo.packageName,
         		modes[mode],
         		installer
@@ -247,7 +220,8 @@ public class Force2SD extends Activity {
         MyApplicationInfo appInfo = (MyApplicationInfo) listView[mode].getAdapter().getItem(pos);
         String fname = appInfo.packageName;      
 		
-		new MoveTask(this, listView, mode, fname, pos, COMMAND_UNINSTALL, method).execute(
+		new MoveTask(this, listView, mode, fname, pos, COMMAND_UNINSTALL, 
+				Options.getMethod(options)).execute(
 				appInfo.packageName
 		);		
 	}
@@ -303,9 +277,11 @@ public class Force2SD extends Activity {
         alertDialog.setTitle("Force2SD Updates");
         
         alertDialog.setMessage(
+        		"1.25:\n"+
+        		"- Autoscan for orphan files on SD (can disable in MENU, Settings...)\n"+
         		"1.20:\n"+
         		"- New, probably better, move method (if it doesn't work for you, "+
-        			"press MENU, Set Move Method, and Classic...)\n");
+        			"press MENU, Settings...)\n");
         
         alertDialog.setButton(DialogInterface.BUTTON_POSITIVE, 
         		"OK", 
@@ -354,6 +330,8 @@ public class Force2SD extends Activity {
 	@Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        options = PreferenceManager.getDefaultSharedPreferences(this);
         
         if (getPackageName().contains("lite")) {
         	limit = 5;
@@ -418,8 +396,8 @@ public class Force2SD extends Activity {
         if (limit>0)
         	pleaseBuy(count >= limit);
         
-        if (getVersion() != getPreferences(MODE_PRIVATE).getInt("updateVersion", 0)) {
-        	getPreferences(MODE_PRIVATE).edit().putInt("updateVersion", getVersion()).commit();
+        if (getVersion() != options.getInt("updateVersion", 0)) {
+        	options.edit().putInt("updateVersion", getVersion()).commit();
         	showUpdates();
         }        
     }
@@ -455,9 +433,23 @@ public class Force2SD extends Activity {
     @Override
     public void onStart() {
     	super.onStart();
+    	Log.v("Force2SD", "onStart");
 
-    	if (!Root.test()) {
-        	fatalError(R.string.need_root_title, R.string.need_root);
+        if (options.getBoolean(Options.PREF_CHECK_ORPHANS, true)) {
+        	CleanApp c = new CleanApp(this);
+        	if (!c.valid) {
+        		if (!Root.test()) {
+        			fatalError(R.string.need_root_title, R.string.need_root);
+        		}
+        	}
+        	else {
+        		if (c.orphans.size()>0) {
+        			c.handleOrphans();
+        		}
+        	}
+        }
+        else if (!Root.test()) {
+			fatalError(R.string.need_root_title, R.string.need_root);
         	return;
         }
         
@@ -511,9 +503,9 @@ public class Force2SD extends Activity {
     	case R.id.sort_dec_size:
     		setSort(SORT_DEC_SIZE);
     		return true;
-    	case R.id.move_method:
-    		setMoveMethod();
-    		return true;
+		case R.id.options:
+			startActivity(new Intent(this, Options.class));			
+			return true;
     	default:
     		return false;
     	}
@@ -749,7 +741,7 @@ public class Force2SD extends Activity {
 				String moveCommand;
 				
 				switch(method) {
-				case Force2SD.METHOD_NEW:
+				case Options.METHOD_NEW:
 					moveCommand = "CLASSPATH=\""+context.getPackageCodePath()+"\" app_process . "+Mover.class.getName()+
 						" move "+opt[0]+" "+(opt[1].equals("f") ? 1 : 2);
 					break;
