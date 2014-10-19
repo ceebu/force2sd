@@ -20,7 +20,7 @@ android:textStyle="bold"
     android:textStyle="normal"
     android:gravity="right"
     android:paddingLeft="5sp"
-    android:paddingRight="5sp"
+    android:paddingRight="25sp"
     android:paddingBottom="8sp"
 />
 </LinearLayout>
