@@ -7,53 +7,48 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
-import mobi.pruss.force2sd.R;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.ProgressDialog;
-import android.appwidget.AppWidgetManager;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.SharedPreferences.Editor;
-import android.content.pm.ActivityInfo;
 import android.content.pm.ApplicationInfo;
-import android.content.pm.ApplicationInfo.DisplayNameComparator;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
 import android.content.res.Resources;
-import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.StatFs;
 import android.preference.PreferenceManager;
-import android.text.Layout;
 import android.util.Log;
-import android.view.inputmethod.InputMethodInfo;
-import android.view.inputmethod.InputMethodManager;
 import android.view.ContextMenu;
+import android.view.ContextMenu.ContextMenuInfo;
 import android.view.Gravity;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.Window;
-import android.view.ContextMenu.ContextMenuInfo;
+import android.view.inputmethod.InputMethodInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.AdapterView;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.AdapterView.OnItemSelectedListener;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
-import android.widget.ProgressBar;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.widget.TwoLineListItem;
 
-public class Force2SD extends Activity {
+import com.actionbarsherlock.app.SherlockActivity;
+import com.actionbarsherlock.view.Menu;
+import com.actionbarsherlock.view.MenuItem;
+import com.actionbarsherlock.view.SubMenu;
+import com.actionbarsherlock.view.Window;
+
+
+public class Force2SD extends SherlockActivity {
 	private Resources res;
     ListView[] listView = {null, null}; 
     PackageManager pm;
@@ -67,6 +62,9 @@ public class Force2SD extends Activity {
     static final int SORT_ALPHA = 0;
     static final int SORT_INC_SIZE = 1;
     static final int SORT_DEC_SIZE = 2;
+    static final int NUM_SORTS = 3;
+    static final String[] sortNames = { "alphabetical", "increasing size", "decreasing size" };
+    boolean bulk;
 	SharedPreferences options;
 
 	static int limit;
@@ -76,6 +74,7 @@ public class Force2SD extends Activity {
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        Log.v("Force2SD", "conf changed");
     }
     
 	public static boolean match(String p, List<ResolveInfo> m) {
@@ -277,6 +276,8 @@ public class Force2SD extends Activity {
         alertDialog.setTitle("Force2SD Updates");
         
         alertDialog.setMessage(
+        		"1.26:\n"+
+        		"- Holo\n"+
         		"1.25:\n"+
         		"- Autoscan for orphan files on SD (can disable in MENU, Settings...)\n"+
         		"1.20:\n"+
@@ -324,14 +325,16 @@ public class Force2SD extends Activity {
 		
 		return v;
 	}
-
-
 	
 	@Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        
 
         options = PreferenceManager.getDefaultSharedPreferences(this);
+        
+        bulk = options.getBoolean(Options.PREF_BULK, true);
         
         if (getPackageName().contains("lite")) {
         	limit = 5;
@@ -344,6 +347,10 @@ public class Force2SD extends Activity {
         
         setContentView(R.layout.main);
         res = getResources();
+        
+		getSupportActionBar().show();
+		getSupportActionBar().setDisplayShowTitleEnabled(false);
+
 
         listView[0] = (ListView) findViewById(R.id.movableApps0);
         
@@ -427,7 +434,8 @@ public class Force2SD extends Activity {
 		StatFs stats = new StatFs("/data");
 		long free = (long)stats.getAvailableBlocks() * (long)stats.getBlockSize();
 		String title = sizeText(free) + " free in internal area";
-		setTitle(title);
+		TextView tv = (TextView)findViewById(R.id.space);
+		tv.setText(title);
 	}
     
     @Override
@@ -455,7 +463,6 @@ public class Force2SD extends Activity {
         
     	listView[0].setAdapter(null);
     	listView[1].setAdapter(null);
-    	populateList();
     }
     
     @Override
@@ -483,8 +490,12 @@ public class Force2SD extends Activity {
     
     private void setSort(int s) {
     	sort = s;
-    	if (listView[mode].getVisibility() != View.GONE)
+    	if (listView[mode].getVisibility() != View.GONE) {
     		sortList(listView[mode]);
+    		listView[mode].setSelection(0);
+    		if (listView[1-mode] != null)
+    			listView[1-mode].setSelection(0);
+    	}
     	savePrefs();
     }
 
@@ -494,14 +505,9 @@ public class Force2SD extends Activity {
     	case R.id.please_buy:
     		pleaseBuy(false);
     		return true;
-    	case R.id.sort_alpha:
-    		setSort(SORT_ALPHA);
-    		return true;
-    	case R.id.sort_inc_size:
-    		setSort(SORT_INC_SIZE);
-    		return true;
-    	case R.id.sort_dec_size:
-    		setSort(SORT_DEC_SIZE);
+    	case R.id.sort:
+    		setSort((sort + 1) % NUM_SORTS);
+    		Toast.makeText(this, sortNames[sort], Toast.LENGTH_SHORT).show();
     		return true;
 		case R.id.options:
 			startActivity(new Intent(this, Options.class));			
@@ -512,7 +518,7 @@ public class Force2SD extends Activity {
     }
 
     @Override
-    public boolean onContextItemSelected(MenuItem item) {
+    public boolean onContextItemSelected(android.view.MenuItem item) {
     	int position =  
     		((AdapterView.AdapterContextMenuInfo)item.getMenuInfo()).position;
     	
@@ -532,11 +538,11 @@ public class Force2SD extends Activity {
     	default:
     		return false;
     	}
-    }
+    } 
 	
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
-		getMenuInflater().inflate(R.menu.main, menu);
+		getSupportMenuInflater().inflate(R.menu.main, menu);
 		if (!getPackageName().contains("lite")) {
 			menu.findItem(R.id.please_buy).setVisible(false);
 		}
@@ -649,11 +655,13 @@ public class Force2SD extends Activity {
 			listView.setVisibility(View.GONE);
 			spinner.setClickable(false);
 			progress = new ProgressDialog(context);
-			progress.setCancelable(false);
-			progress.setMessage("Getting applications...");
-			progress.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
-			progress.setIndeterminate(true);
-			progress.show();
+			try {
+				progress.setCancelable(false);
+				progress.setMessage("Getting applications...");
+				progress.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+				progress.setIndeterminate(true);
+				progress.show();
+			} catch(Exception e) {}
 		}
 		
 		protected void onProgressUpdate(Integer... p) {
@@ -703,11 +711,14 @@ public class Force2SD extends Activity {
 			
 			listView.setAdapter(appInfoAdapter);
 			((Force2SD)context).sortList(listView);		
-			progress.dismiss();
+			try {
+				progress.dismiss();
+			} catch(Exception e) {};
 			listView.setVisibility(View.VISIBLE);
 			spinner.setClickable(true);
 		}
 	}
+	
 
 	class MoveTask extends AsyncTask<String, Void, Boolean> {
 		final Context	 context;
