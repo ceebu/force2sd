@@ -23,10 +23,15 @@ public class CleanApp {
 	int	orphanSize;
 	boolean valid;
 	Context context;
+	boolean setContext;
 	
 	private void deleteOrphans() {
 		ArrayList<String> cmds = new ArrayList<String>();
 		cmds.add("su");
+		if (setContext) {
+			cmds.add("-cn");
+			cmds.add("u:r:system_app:s0");
+		}
 		cmds.add("-c");
 		cmds.add("rm");
 		
@@ -59,6 +64,7 @@ public class CleanApp {
 	}
 	
 	public void handleOrphans() {
+		Log.v("Force2SD", "found orphans dialog");
         AlertDialog alertDialog = new AlertDialog.Builder(context).create();
         
         alertDialog.setTitle("Orphan app files found");
@@ -79,15 +85,19 @@ public class CleanApp {
         alertDialog.show();		
 	}
 	
-	public CleanApp(Context context) {		
+	public CleanApp(Context context, Boolean setContext) {		
 		this.context = context;
+		this.setContext = setContext;
 		
 		ArrayList<FileInfo> files = new ArrayList<FileInfo>();
 		
 		try {
 			Process p;		
 			Boolean havePackages = false;
-			p = Runtime.getRuntime().exec(new String[] { "su", "-c", "ls -s /mnt/secure/asec ; cat /data/system/packages.xml" } );
+			if (setContext)
+				p = Runtime.getRuntime().exec(new String[] { "su", "-cn", "u:r:system_app:s0", "-c", "ls -s /mnt/secure/asec ; cat /data/system/packages.xml" } );
+			else
+				p = Runtime.getRuntime().exec(new String[] { "su", "-c", "ls -s /mnt/secure/asec ; cat /data/system/packages.xml" } );
 			DataInputStream suOut = new DataInputStream(p.getInputStream());
 
 			BufferedReader br = new BufferedReader(new InputStreamReader(suOut));
@@ -105,6 +115,7 @@ public class CleanApp {
 				}
 			}
 			
+			Log.v("Force2SD", "cleanApp havePackages "+havePackages);
 			if (!havePackages) {
 				valid = false;
 				return;

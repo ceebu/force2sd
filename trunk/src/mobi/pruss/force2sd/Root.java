@@ -10,16 +10,21 @@ import android.util.Log;
 public class Root {
 	private DataOutputStream rootCommands;
 	private Process rootShell;
+	private boolean setContext;
 
 	public boolean isValid() {
 		return rootCommands != null;
 	}
 
-	public Root() {		
+	public Root(boolean setContext) {
+		this.setContext = setContext;
 		try {
-			rootShell = new ProcessBuilder() 
-				.command("su")
-				.redirectErrorStream(true)
+			ProcessBuilder pb = new ProcessBuilder();
+			if (setContext)
+				pb.command("su", "-cn", "u:r:system_app:s0");
+			else
+				pb.command("su");
+			rootShell = pb.redirectErrorStream(true)
 				.start();
 			rootCommands = new DataOutputStream(rootShell.getOutputStream());
 		}
@@ -35,6 +40,10 @@ public class Root {
 			Log.v("Force2SD", "root execOne: "+s);
 			rootCommands.writeBytes(s + "\n");
 			rootCommands.close();
+			if (successMarker == null) {
+				br.close();
+				return true;
+			}
 			Log.v("Force2SD", "<");
 			String line;
 			while((line=br.readLine())!=null) {
