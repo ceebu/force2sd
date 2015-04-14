@@ -15,12 +15,14 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.StatFs;
 import android.preference.PreferenceManager;
@@ -69,7 +71,9 @@ public class Force2SD extends SherlockActivity {
 
 	static int limit;
     public int count = 0;
-    static boolean quickExit = false;
+	private boolean initialized;
+	private boolean setContext;
+//    static boolean quickExit = false;
 	
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
@@ -112,7 +116,7 @@ public class Force2SD extends SherlockActivity {
     }
     
 	private void fatalError(int title, int msg) {
-		quickExit = true;
+//		quickExit = true;
         AlertDialog alertDialog = new AlertDialog.Builder(this).create();
         
         Log.e("fatalError", (String) res.getText(title));
@@ -162,9 +166,11 @@ public class Force2SD extends SherlockActivity {
 
 	private void populateList() {
 		if (listView[mode].getAdapter() == null) {
-			new PopulateListTask(this, pm, listView[mode], mode ).execute();
+			Log.v("Force2SD", "running populate task");
+			new PopulateListTask(listView[mode], mode ).execute();
 		}
 		else { 
+			Log.v("Force2SD", "sorting");
 			sortList(listView[mode]);
 		}
         updateTitle();
@@ -330,7 +336,23 @@ public class Force2SD extends SherlockActivity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
+        pm = getPackageManager();
         
+        setContext = false;
+        
+        if (Build.VERSION.SDK_INT >= 17) {
+        	PackageInfo pi;
+			try {
+				pi = pm.getPackageInfo("eu.chainfire.supersu",0);
+	        	if (pi != null && pi.versionCode >= 190) {
+	        		Log.v("Force2SD", "supersu "+pi.versionCode);
+	        		setContext = true;
+	        	}
+			} catch (NameNotFoundException e) {
+			}
+        } 
+        
+        initialized = false;
 
         options = PreferenceManager.getDefaultSharedPreferences(this);
         
@@ -342,8 +364,6 @@ public class Force2SD extends SherlockActivity {
         else {
         	limit = 0;
         }
-        
-        pm = getPackageManager();
         
         setContentView(R.layout.main);
         res = getResources();
@@ -438,40 +458,27 @@ public class Force2SD extends SherlockActivity {
 		tv.setText(title);
 	}
     
+//    @Override
+//    public void onStart() {
+//    	super.onStart();
+//    	Log.v("Force2SD", "onStart");
+//
+//    	listView[0].setAdapter(null);
+//    	listView[1].setAdapter(null);
+//    }
+    
     @Override
     public void onStart() {
     	super.onStart();
+    	
+//    	if (quickExit) { 
+//    		finish();
+//    		return;
+//    	}
+    	
     	Log.v("Force2SD", "onStart");
-
-        if (options.getBoolean(Options.PREF_CHECK_ORPHANS, true)) {
-        	CleanApp c = new CleanApp(this);
-        	if (!c.valid) {
-        		if (!Root.test()) {
-        			fatalError(R.string.need_root_title, R.string.need_root);
-        		}
-        	}
-        	else {
-        		if (c.orphans.size()>0) {
-        			c.handleOrphans();
-        		}
-        	}
-        }
-        else if (!Root.test()) {
-			fatalError(R.string.need_root_title, R.string.need_root);
-        	return;
-        }
-        
     	listView[0].setAdapter(null);
     	listView[1].setAdapter(null);
-    }
-    
-    @Override
-    public void onResume() {
-    	super.onResume();
-    	
-    	if (quickExit)
-    		return;
-    	
     	populateList();
     }
     
@@ -551,18 +558,18 @@ public class Force2SD extends SherlockActivity {
 
 	public class PopulateListTask extends AsyncTask<Void, Integer, List<MyApplicationInfo>> {
 		final PackageManager pm;
-		final Activity	 context;
 		final ListView listView;
 		ProgressDialog progress;
 		final Spinner  spinner;
 		final int mode;
+		private boolean haveRoot = false;
+		private CleanApp cleanApp = null;
 		
-		PopulateListTask(Activity c, PackageManager p, ListView l, int m) {
-			context = c;
-			pm		= p;
+		PopulateListTask(ListView l, int m) {			
+			pm		= Force2SD.this.pm;
 			listView = l;
 			mode     = m;
-			spinner = (Spinner)((Activity)c).findViewById(R.id.fromto);
+			spinner = (Spinner)Force2SD.this.findViewById(R.id.fromto);
 		}
 		
 		public boolean matchIM(String p, List<InputMethodInfo> m) {
@@ -604,9 +611,40 @@ public class Force2SD extends SherlockActivity {
 			
 			return true;
 		}
+		
+		private boolean initialize() {
+			if (Force2SD.this.initialized) {
+				haveRoot = true; 	
+				return true;
+			}
+			
+			Log.v("Force2SD", "initializing");
+			
+	        if (Force2SD.this.options.getBoolean(Options.PREF_CHECK_ORPHANS, true)) {
+	        	cleanApp = new CleanApp(Force2SD.this, Force2SD.this.setContext);
+	        	if (cleanApp.valid) {
+	    			Log.v("Force2SD", "did cleanApp scan");
+	        		haveRoot = true;
+	        	}
+	        	else {
+	    			Log.v("Force2SD", "testing root");
+	        		haveRoot = Root.test();
+	        	}
+	        }
+	        else {
+	        	haveRoot = Root.test();
+	        }
+	        
+			Log.v("Force2SD", "root mode "+haveRoot);
+	        Force2SD.this.initialized = haveRoot;
+	        return haveRoot;	    
+		}
 
 		@Override
 		protected List<MyApplicationInfo> doInBackground(Void... c) {
+			if (!initialize())
+				return null;
+			
 			List<ApplicationInfo> list = 
 				pm.getInstalledApplications(0);
 			
@@ -619,13 +657,13 @@ public class Force2SD extends SherlockActivity {
 		        i.addCategory(Intent.CATEGORY_HOME);
 		        launchers = pm.queryIntentActivities(i, 0);
 		        
-		        InputMethodManager mgr = (InputMethodManager)context.getSystemService(Context.INPUT_METHOD_SERVICE);
+		        InputMethodManager mgr = (InputMethodManager)Force2SD.this.getSystemService(Context.INPUT_METHOD_SERVICE);
 		        inputMethods = mgr.getInputMethodList();
 			}
 			
 			List<MyApplicationInfo> myList = new ArrayList<MyApplicationInfo>();
 			
-			MyCache cache = new MyCache(MyCache.genFilename(context, "app_labels"));
+			MyCache cache = new MyCache(MyCache.genFilename(Force2SD.this, "app_labels"));
 
 			for (int i = list.size()-1 ; i >= 0 ; i--) {
 				if (!onRightStorage(list.get(i))) {
@@ -652,12 +690,14 @@ public class Force2SD extends SherlockActivity {
 		
 		@Override
 		protected void onPreExecute() {
+			cleanApp = null;
+			haveRoot = false;
 			listView.setVisibility(View.GONE);
 			spinner.setClickable(false);
-			progress = new ProgressDialog(context);
+			progress = new ProgressDialog(Force2SD.this);
 			try {
 				progress.setCancelable(false);
-				progress.setMessage("Getting applications...");
+				progress.setMessage("Initializing...");
 				progress.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
 				progress.setIndeterminate(true);
 				progress.show();
@@ -672,9 +712,17 @@ public class Force2SD extends SherlockActivity {
 		
 		@Override
 		protected void onPostExecute(final List<MyApplicationInfo> appInfo) {
+			try {
+				progress.dismiss();
+			} catch(Exception e) {};
+
+			if (!haveRoot) {
+				Force2SD.this.fatalError(R.string.need_root_title, R.string.need_root);
+				return;
+			}
 			
 			ArrayAdapter<MyApplicationInfo> appInfoAdapter = 
-				new ArrayAdapter<MyApplicationInfo>(context, 
+				new ArrayAdapter<MyApplicationInfo>(Force2SD.this, 
 						R.layout.twoline, 
 						appInfo) {
 
@@ -682,7 +730,7 @@ public class Force2SD extends SherlockActivity {
 					View v;				
 					
 					if (convertView == null) {
-		                v = View.inflate(context, R.layout.twoline, null);
+		                v = View.inflate(Force2SD.this, R.layout.twoline, null);
 		            }
 					else {
 						v = convertView;
@@ -710,12 +758,12 @@ public class Force2SD extends SherlockActivity {
 			};
 			
 			listView.setAdapter(appInfoAdapter);
-			((Force2SD)context).sortList(listView);		
-			try {
-				progress.dismiss();
-			} catch(Exception e) {};
+			Force2SD.this.sortList(listView);		
 			listView.setVisibility(View.VISIBLE);
 			spinner.setClickable(true);
+			Log.v("Force2SD", "handle orphans");
+			if (cleanApp != null && cleanApp.valid && cleanApp.orphans.size() > 0) 
+				cleanApp.handleOrphans();			
 		}
 	}
 	
@@ -744,7 +792,7 @@ public class Force2SD extends SherlockActivity {
 		
 		@Override
 		protected Boolean doInBackground(String... opt) {
-			Root root = new Root();
+			Root root = new Root(Force2SD.this.setContext);
 			root.exec("export LD_LIBRARY_PATH=/vendor/lib:/system/lib");
 			Boolean success = false;
 			switch(command) {
@@ -764,6 +812,7 @@ public class Force2SD extends SherlockActivity {
 					break;
 				}
 				
+				Log.v("Force2SD", "moveCommand");
 				success = root.execOne("killall -9 "+opt[0]+"; "+moveCommand,"Success.*");
 				break;
 			case Force2SD.COMMAND_UNINSTALL:
@@ -917,5 +966,5 @@ class MyApplicationInfo extends ApplicationInfo {
 
 	public String getLabel() {
 		return label;
-	}
+	}	
 }

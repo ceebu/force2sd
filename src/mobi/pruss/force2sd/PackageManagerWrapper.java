@@ -48,7 +48,6 @@ public class PackageManagerWrapper {
 	
 	public void movePackage(String packageName, int dest) {
 		try {
-
 			MyPackageMoveObserver observer = new MyPackageMoveObserver(); 
 
 			System.out.println("Moving "+packageName+" to "+dest);
