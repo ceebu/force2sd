@@ -620,11 +620,11 @@ public class Force2SD extends SherlockActivity {
 			
 			Log.v("Force2SD", "initializing");
 			
-	        if (Force2SD.this.options.getBoolean(Options.PREF_CHECK_ORPHANS, true)) {
+	        if (Build.VERSION.SDK_INT < 21 && Force2SD.this.options.getBoolean(Options.PREF_CHECK_ORPHANS, true)) {
 	        	cleanApp = new CleanApp(Force2SD.this, Force2SD.this.setContext);
 	        	if (cleanApp.valid) {
 	    			Log.v("Force2SD", "did cleanApp scan");
-	        		haveRoot = true;
+	        		haveRoot = true; 
 	        	}
 	        	else {
 	    			Log.v("Force2SD", "testing root");
